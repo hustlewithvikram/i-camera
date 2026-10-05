@@ -1,8 +1,3 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="120" fill="#111214"/>
-  <rect x="88" y="142" width="336" height="260" rx="82" fill="#24272b" stroke="#777c82" stroke-width="9"/>
-  <circle cx="256" cy="272" r="112" fill="#0a0b0c" stroke="#a4a8ad" stroke-width="9"/>
-  <circle cx="256" cy="272" r="63" fill="#17191b" stroke="#4e5359" stroke-width="7"/>
-  <circle cx="234" cy="250" r="19" fill="#fff" opacity=".55"/>
-  <rect x="178" y="105" width="112" height="36" rx="18" fill="#777c82"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#090a0c"/><stop offset="1" stop-color="#30343a"/></linearGradient><radialGradient id="lens"><stop stop-color="#dce2e8"/><stop offset=".2" stop-color="#59636d"/><stop offset=".48" stop-color="#111419"/><stop offset=".72" stop-color="#7c8791"/><stop offset="1" stop-color="#0a0b0d"/></radialGradient><linearGradient id="body" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#454b53"/><stop offset="1" stop-color="#15171a"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="22" stdDeviation="25" flood-opacity=".5"/></filter></defs>
+<rect width="1024" height="1024" rx="230" fill="url(#bg)"/><g transform="rotate(-7 512 520)" filter="url(#s)"><rect x="174" y="282" width="676" height="470" rx="132" fill="url(#body)" stroke="#8f979f" stroke-width="10"/><path d="M365 282l54-90h186l54 90" fill="#33383e" stroke="#777f87" stroke-width="8"/><rect x="245" y="348" width="534" height="300" rx="105" fill="#0b0c0e" stroke="#5e666f" stroke-width="8"/><circle cx="512" cy="498" r="168" fill="url(#lens)" stroke="#c5cbd1" stroke-width="10"/><circle cx="512" cy="498" r="93" fill="#060708" stroke="#30363d" stroke-width="9"/><circle cx="478" cy="464" r="28" fill="#fff" opacity=".68"/><circle cx="695" cy="394" r="22" fill="#d9dde1"/></g><circle cx="805" cy="797" r="66" fill="#fff" opacity=".09"/></svg>
