@@ -1,52 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920" role="img" aria-labelledby="title desc">
-  <title id="title">iCamera</title>
-  <desc id="desc">A dark, minimal camera interface inspired by modern smartphone camera apps.</desc>
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#050505"/>
-      <stop offset="0.55" stop-color="#161616"/>
-      <stop offset="1" stop-color="#2b2b2b"/>
-    </linearGradient>
-    <radialGradient id="lens" cx="50%" cy="45%" r="65%">
-      <stop offset="0" stop-color="#6f7680"/>
-      <stop offset="0.32" stop-color="#24282d"/>
-      <stop offset="0.62" stop-color="#08090a"/>
-      <stop offset="0.82" stop-color="#535961"/>
-      <stop offset="1" stop-color="#111214"/>
-    </radialGradient>
-    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
-      <feDropShadow dx="0" dy="24" stdDeviation="32" flood-opacity=".55"/>
-    </filter>
-  </defs>
-
-  <rect width="1080" height="1920" fill="url(#bg)"/>
-  <circle cx="930" cy="210" r="260" fill="#ffffff" opacity=".035"/>
-  <circle cx="80" cy="1710" r="360" fill="#ffffff" opacity=".025"/>
-
-  <g transform="translate(390 250)" filter="url(#shadow)">
-    <rect width="300" height="300" rx="72" fill="#111214" stroke="#3b3d40" stroke-width="4"/>
-    <rect x="55" y="72" width="190" height="155" rx="48" fill="#24272b" stroke="#777c82" stroke-width="6"/>
-    <circle cx="150" cy="150" r="66" fill="url(#lens)" stroke="#a4a8ad" stroke-width="5"/>
-    <circle cx="150" cy="150" r="27" fill="#030405"/>
-    <circle cx="135" cy="134" r="9" fill="#ffffff" opacity=".55"/>
-    <rect x="92" y="48" width="55" height="18" rx="9" fill="#777c82"/>
-  </g>
-
-  <text x="540" y="720" text-anchor="middle" fill="#ffffff" font-family="Inter, Arial, sans-serif" font-size="104" font-weight="700" letter-spacing="-3">iCamera</text>
-  <text x="540" y="805" text-anchor="middle" fill="#b9b9b9" font-family="Inter, Arial, sans-serif" font-size="38">iPhone-inspired camera experience for Android</text>
-
-  <g transform="translate(135 1030)">
-    <rect width="810" height="480" rx="64" fill="#0b0c0d" stroke="#343638" stroke-width="3"/>
-    <rect x="42" y="42" width="726" height="286" rx="42" fill="#151719"/>
-    <circle cx="405" cy="185" r="92" fill="url(#lens)" stroke="#8b9096" stroke-width="4"/>
-    <circle cx="405" cy="185" r="38" fill="#020303"/>
-    <circle cx="382" cy="162" r="12" fill="#fff" opacity=".45"/>
-    <rect x="54" y="370" width="150" height="18" rx="9" fill="#4b4e52"/>
-    <rect x="230" y="370" width="210" height="18" rx="9" fill="#74787d"/>
-    <rect x="466" y="370" width="118" height="18" rx="9" fill="#4b4e52"/>
-    <rect x="610" y="370" width="108" height="18" rx="9" fill="#303236"/>
-  </g>
-
-  <text x="540" y="1645" text-anchor="middle" fill="#8f9398" font-family="Inter, Arial, sans-serif" font-size="30">KOTLIN  •  JETPACK COMPOSE  •  CAMERA2 / CAMERAX</text>
-  <text x="540" y="1710" text-anchor="middle" fill="#666a6f" font-family="Inter, Arial, sans-serif" font-size="26">Capability-driven • Hardware-aware • Native Android</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+<defs><linearGradient id="b" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#050506"/><stop offset=".55" stop-color="#15171b"/><stop offset="1" stop-color="#30343a"/></linearGradient><radialGradient id="g"><stop stop-color="#b8c0c9"/><stop offset=".35" stop-color="#4d555e"/><stop offset=".68" stop-color="#0a0b0d"/><stop offset="1" stop-color="#020203"/></radialGradient><filter id="s"><feDropShadow dx="0" dy="24" stdDeviation="28" flood-opacity=".55"/></filter></defs>
+<rect width="1600" height="900" fill="url(#b)"/><circle cx="1400" cy="80" r="310" fill="#fff" opacity=".035"/><circle cx="120" cy="850" r="280" fill="#fff" opacity=".025"/>
+<g transform="translate(220 205)" filter="url(#s)"><rect width="490" height="490" rx="128" fill="#101114" stroke="#454a50" stroke-width="5"/><path d="M145 178h200c46 0 83 37 83 83v55c0 46-37 83-83 83H145c-46 0-83-37-83-83v-55c0-46 37-83 83-83Z" fill="#24282d"/><circle cx="245" cy="288" r="113" fill="url(#g)" stroke="#aeb5bd" stroke-width="7"/><circle cx="245" cy="288" r="61" fill="#08090b"/><circle cx="222" cy="265" r="19" fill="#fff" opacity=".7"/><path d="M180 178l28-47h74l28 47" fill="#353a40"/><circle cx="360" cy="225" r="13" fill="#d9dde1"/></g>
+<g transform="translate(820 275)"><text x="0" y="0" fill="#fff" font-family="Inter,Arial,sans-serif" font-size="104" font-weight="750" letter-spacing="-4">iCamera</text><text x="5" y="82" fill="#b7bbc0" font-family="Inter,Arial,sans-serif" font-size="32">iPhone-inspired camera experience for Android</text><text x="5" y="145" fill="#858a91" font-family="Inter,Arial,sans-serif" font-size="24">Kotlin  •  Jetpack Compose  •  CameraX + Camera2</text><g transform="translate(0 210)"><rect width="530" height="58" rx="29" fill="#fff" opacity=".08"/><text x="30" y="38" fill="#d6d9dd" font-family="Inter,Arial,sans-serif" font-size="20">HARDWARE-AWARE  •  CAPABILITY-DRIVEN</text></g></g></svg>
