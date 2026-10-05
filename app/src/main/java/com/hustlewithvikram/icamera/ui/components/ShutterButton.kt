@@ -11,9 +11,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun ShutterButton(onClick: () -> Unit) {
+fun ShutterButton(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(76.dp)
             .background(Color.White, CircleShape)
             .clickable(onClick = onClick)
