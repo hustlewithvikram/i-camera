@@ -9,9 +9,9 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,6 +23,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.hustlewithvikram.icamera.camera.CameraCapture
 import com.hustlewithvikram.icamera.camera.CameraController
+import com.hustlewithvikram.icamera.ui.components.ShutterButton
 
 @Composable
 fun CameraScreen() {
@@ -39,9 +40,7 @@ fun CameraScreen() {
 
     if (!granted) {
         LaunchedEffect(Unit) { launcher.launch(Manifest.permission.CAMERA) }
-        Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-            Text("Camera permission is required", color = Color.White)
-        }
+        Box(Modifier.fillMaxSize().background(Color.Black))
         return
     }
 
@@ -62,18 +61,21 @@ fun CameraScreen() {
                         .build()
                     imageCapture = image
                     controller.bind(
-                        preview, image, CameraSelector.DEFAULT_BACK_CAMERA, lifecycleOwner
+                        preview,
+                        image,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        lifecycleOwner
                     )
                     preview.setSurfaceProvider(surfaceProvider)
                 }
             }
         )
 
-        Button(
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 48.dp),
+        ShutterButton(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 48.dp),
             onClick = { imageCapture?.let { capture.capture(it) {} } }
-        ) {
-            Text("Capture")
-        }
+        )
     }
 }
