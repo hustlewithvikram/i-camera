@@ -51,11 +51,10 @@ jobs:
         run: |
           mkdir -p "$HOME/.android"
           curl -fsSL "https://android.googlesource.com/platform/frameworks/support/+/bf0289331e88399e38f5486200199bc857932e24/development/keystore/debug.keystore?format=TEXT" |
-            sed '1d' |
             tr -d '\n' |
             base64 --decode > "$HOME/.android/debug.keystore"
           chmod 600 "$HOME/.android/debug.keystore"
-          keytool -list -keystore "$HOME/.android/debug.keystore"             -storepass android -alias AndroidDebugKey -keypass android -v |
+          keytool -list -keystore "$HOME/.android/debug.keystore"             -storepass android -alias androiddebugkey -keypass android -v |
             grep -E "Alias name:|SHA256:"
 
       - name: Verify toolchain
