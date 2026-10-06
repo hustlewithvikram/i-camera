@@ -8,6 +8,9 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.core.DynamicRange
+import androidx.camera.core.ImageCaptureCapabilities
+import androidx.camera.extensions.ExtensionMode
+import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
@@ -26,8 +29,24 @@ data class CameraCapabilities(
     val maxZoomRatio: Float,
     val exposureSupported: Boolean,
     val exposureMin: Int,
-    val exposureMax: Int
+    val exposureMax: Int,
+    val supportedPhotoModes: Set<PhotoMode>,
+    val supportsUltraHdr: Boolean,
+    val supportsRaw: Boolean,
+    val supportsRawJpeg: Boolean,
+    val supportsZeroShutterLag: Boolean,
+    val supportsConcurrentCamera: Boolean,
+    val macroMinFocusDistance: Float
 )
+
+enum class PhotoMode(val label: String, val extensionMode: Int?) {
+    PHOTO("PHOTO", null),
+    NIGHT("NIGHT", ExtensionMode.NIGHT),
+    HDR("HDR", ExtensionMode.HDR),
+    PORTRAIT("PORTRAIT", ExtensionMode.BOKEH),
+    RETOUCH("RETOUCH", ExtensionMode.FACE_RETOUCH),
+    AUTO("AUTO", ExtensionMode.AUTO)
+}
 
 class CameraController(private val context: Context) {
     private var provider: ProcessCameraProvider? = null
@@ -63,7 +82,7 @@ class CameraController(private val context: Context) {
 
                 val image = if (!videoMode) {
                     ImageCapture.Builder()
-                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                         .setFlashMode(ImageCapture.FLASH_MODE_AUTO)
                         .build()
                 } else {
@@ -124,7 +143,17 @@ class CameraController(private val context: Context) {
                         maxZoomRatio = zoomState?.maxZoomRatio ?: 1f,
                         exposureSupported = exposure.isExposureCompensationSupported,
                         exposureMin = exposure.exposureCompensationRange.lower,
-                        exposureMax = exposure.exposureCompensationRange.upper
+                        exposureMax = exposure.exposureCompensationRange.upper,
+                        supportedPhotoModes = supportedPhotoModes,
+                        supportsUltraHdr = supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR),
+                        supportsRaw = supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW),
+                        supportsRawJpeg = supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW_JPEG),
+                        supportsZeroShutterLag = image?.isZslSupported == true,
+                        supportsConcurrentCamera = cameraProvider.availableConcurrentCameraInfos.isNotEmpty(),
+                        macroMinFocusDistance = runCatching {
+                            androidx.camera.camera2.interop.Camera2Interop.getCameraCharacteristics(activeCamera.cameraInfo)
+                                .get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+                        }.getOrDefault(0f)
                     )
                 )
             } catch (t: Throwable) {
