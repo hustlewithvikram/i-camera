@@ -196,6 +196,11 @@ class CameraController(private val context: Context) {
                 }.getOrNull() ?: activeCamera.cameraInfo
 
                 val supportedPhotoModes = mutableSetOf(PhotoMode.PHOTO)
+                val supportsVideoFromCapability = runCatching {
+                    Recorder.getVideoCapabilities(capabilityInfo)
+                        .getSupportedQualities(DynamicRange.SDR)
+                        .isNotEmpty()
+                }.getOrDefault(false)
                 val supportsHighSpeedVideo = runCatching {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         val characteristics = androidx.camera.camera2.interop.Camera2CameraInfo
@@ -294,12 +299,12 @@ class CameraController(private val context: Context) {
                         ultraWideZoomRatio = discoveredUltraWideRatio,
                         // Panorama and document scanning are software-assisted modes.
                         // They are only exposed on a camera that can capture stills.
-                        supportsPanorama = image != null && !frontCameraSelector(capabilitySelector),
-                        supportsDocumentScan = image != null,
+                        supportsPanorama = capabilityInfo.lensFacing == CameraSelector.LENS_FACING_BACK,
+                        supportsDocumentScan = capabilityInfo.lensFacing == CameraSelector.LENS_FACING_BACK,
                         // Slow motion is exposed only when Camera2 reports a
                         // constrained high-speed video capability.
-                        supportsSlowMotion = supportsHighSpeedVideo,
-                        supportsTimelapse = video != null,
+                        supportsSlowMotion = supportsHighSpeedVideo && supportsVideoFromCapability,
+                        supportsTimelapse = supportsVideoFromCapability,
                         supportsDualPhotoVideo = cameraProvider.availableConcurrentCameraInfos.any { infos ->
                             infos.any { it.lensFacing == CameraSelector.LENS_FACING_BACK } &&
                                 infos.any { it.lensFacing == CameraSelector.LENS_FACING_FRONT }
@@ -310,14 +315,6 @@ class CameraController(private val context: Context) {
                 onError(t)
             }
         }, ContextCompat.getMainExecutor(context))
-    }
-
-    private fun frontCameraSelector(selector: CameraSelector): Boolean {
-        return runCatching {
-            provider?.getCameraInfo(selector)?.let {
-                it.lensFacing == CameraSelector.LENS_FACING_FRONT
-            } ?: false
-        }.getOrDefault(false)
     }
 
     fun bindConcurrent(
