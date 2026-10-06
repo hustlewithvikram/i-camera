@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.gestures.snapping.SnapPosition
@@ -796,13 +797,14 @@ private fun ZoomControl(
     if (maxZoom <= 1.01f && !supportsUltraWide) return
 
     val wholeMax = maxZoom.toInt().coerceAtLeast(1)
-    val normalStops = remember(maxZoom, hardwareZoomRatios, supportsUltraWide, ultraWideRatio) {
+    val normalStops = remember(maxZoom, hardwareZoomRatios, supportsUltraWide, ultraWideRatio, value) {
         buildList {
             if (supportsUltraWide) add(ultraWideRatio.coerceIn(0.35f, 0.98f))
             add(1f)
             addAll((2..minOf(5, wholeMax)).map { it.toFloat() })
             addAll(hardwareZoomRatios.filter { it >= 1f && it <= maxZoom })
             if (maxZoom > 5f) add(maxZoom)
+            if (value >= 1f && value <= maxZoom) add(value)
         }
             .map { (it * 10f).roundToInt() / 10f }
             .distinct()
