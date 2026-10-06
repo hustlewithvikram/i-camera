@@ -277,6 +277,19 @@ fun CameraScreen() {
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
         ) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(end = 10.dp),
+                contentAlignment = Alignment.TopEnd
+            ) {
+                CameraIconButton(
+                    onClick = { showSettings = !showSettings },
+                    selected = showSettings,
+                    size = 44.dp
+                ) {
+                    Text("...", color = Color.White)
+                }
+            }
+
             TopControls(
                 capabilities = capabilities,
                 flashMode = flashMode,
