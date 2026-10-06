@@ -205,9 +205,11 @@ class CameraController(private val context: Context) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         val characteristics = androidx.camera.camera2.interop.Camera2CameraInfo
                             .from(capabilityInfo)
-                        val configs = characteristics.getCameraCharacteristic(
-                            CameraCharacteristics.CONTROL_AVAILABLE_HIGH_SPEED_VIDEO_CONFIGURATIONS
+                        val highSpeedKey = CameraCharacteristics.Key(
+                            "android.control.availableHighSpeedVideoConfigurations",
+                            Array<IntArray>::class.java
                         )
+                        val configs: Array<IntArray>? = characteristics.getCameraCharacteristic(highSpeedKey)
                         !configs.isNullOrEmpty()
                     } else {
                         false
@@ -390,16 +392,25 @@ class CameraController(private val context: Context) {
         fun finishIfBoth() {
             if (primaryFinished && secondaryFinished) onFinished()
         }
-        recording = capture.startVideo(primary, withAudio, onStarted) {
+        recording = capture.startVideo(
+            videoCapture = primary,
+            withAudio = withAudio,
+            onStarted = onStarted
+        ) {
             primaryFinished = true
             recording = null
             finishIfBoth()
         }
-        secondaryRecording = capture.startVideo(secondary, false, {}, {
+        secondaryRecording = capture.startVideo(
+            videoCapture = secondary,
+            withAudio = false,
+            onStarted = {},
+            onFinished = {
             secondaryFinished = true
-            secondaryRecording = null
-            finishIfBoth()
-        })
+                secondaryRecording = null
+                finishIfBoth()
+            }
+        )
     }
 
     fun startRecording(
