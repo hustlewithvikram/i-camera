@@ -1,10 +1,17 @@
-*.iml
+# Gradle
 .gradle/
-.idea/
-local.properties
-.DS_Store
-/build/
+build/
 **/build/
-captures/
+
+# Android Studio
+.idea/
+*.iml
 .externalNativeBuild/
 .cxx/
+
+# Local SDK configuration
+local.properties
+
+# OS
+.DS_Store
+Thumbs.db
