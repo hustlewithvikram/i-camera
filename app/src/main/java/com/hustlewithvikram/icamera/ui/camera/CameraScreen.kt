@@ -125,6 +125,9 @@ fun CameraScreen() {
     var photoMode by remember { mutableStateOf(PhotoMode.PHOTO) }
     var previewScale by remember { mutableFloatStateOf(1f) }
     var previewAlpha by remember { mutableFloatStateOf(1f) }
+    var showSettings by remember { mutableStateOf(false) }
+    var lowLightBoost by remember { mutableStateOf(false) }
+    var torchStrength by remember { mutableFloatStateOf(1f) }
     var frontCamera by remember { mutableStateOf(false) }
     var capabilities by remember { mutableStateOf<CameraCapabilities?>(null) }
     var flashMode by remember { mutableStateOf(FlashMode.AUTO) }
