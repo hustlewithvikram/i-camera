@@ -203,11 +203,15 @@ class CameraController(private val context: Context) {
                     }
                 }
 
-                val macroDistance = runCatching {
+                val capabilityMacroDistance = runCatching {
                     androidx.camera.camera2.interop.Camera2CameraInfo.from(capabilityInfo)
                         .getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
                 }.getOrDefault(0f)
-                if (macroDistance > 0f) supportedPhotoModes += PhotoMode.MACRO
+                val activeMacroDistance = runCatching {
+                    androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                        .getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+                }.getOrDefault(0f)
+                if (capabilityMacroDistance > 0f) supportedPhotoModes += PhotoMode.MACRO
                 if (supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW) || supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW_JPEG)) {
                     supportedPhotoModes += PhotoMode.RAW
                 }
@@ -257,7 +261,7 @@ class CameraController(private val context: Context) {
 
                 ultraWideSelector = discoveredUltraWideSelector
                 ultraWideZoomRatio = discoveredUltraWideRatio
-                if (photoMode == PhotoMode.MACRO) setMacro(true, macroDistance) else setMacro(false, 0f)
+                if (photoMode == PhotoMode.MACRO) setMacro(true, activeMacroDistance) else setMacro(false, 0f)
 
                 onReady(
                     CameraCapabilities(
@@ -283,7 +287,7 @@ class CameraController(private val context: Context) {
                             infos.any { it.lensFacing == CameraSelector.LENS_FACING_BACK } &&
                                 infos.any { it.lensFacing == CameraSelector.LENS_FACING_FRONT }
                         },
-                        macroMinFocusDistance = macroDistance,
+                        macroMinFocusDistance = activeMacroDistance,
                         supportsLowLightBoost = activeCamera.cameraInfo.isLowLightBoostSupported,
                         supportsTorchStrength = activeCamera.cameraInfo.isTorchStrengthSupported,
                         maxTorchStrengthLevel = activeCamera.cameraInfo.maxTorchStrengthLevel,
