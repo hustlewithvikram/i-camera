@@ -682,6 +682,16 @@ private fun CameraModeRail(
         listState.animateScrollToItem(index)
     }
 
+    LaunchedEffect(listState, modes) {
+        androidx.compose.runtime.snapshotFlow {
+            listState.isScrollInProgress to listState.firstVisibleItemIndex
+        }.collect { (scrolling, index) ->
+            if (!scrolling && index in modes.indices && modes[index] != selected) {
+                onSelected(modes[index])
+            }
+        }
+    }
+
     LazyRow(
         state = listState,
         modifier = Modifier
