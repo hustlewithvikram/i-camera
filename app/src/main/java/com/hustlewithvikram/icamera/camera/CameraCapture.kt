@@ -12,7 +12,7 @@ import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
-import java.util.function.Consumer
+import androidx.core.util.Consumer
 
 class CameraCapture(private val context: Context) {
     fun capture(
@@ -82,7 +82,7 @@ class CameraCapture(private val context: Context) {
 
         return pending.start(
             ContextCompat.getMainExecutor(context),
-            Consumer { event ->
+            Consumer<VideoRecordEvent> { event ->
                 when (event) {
                     is VideoRecordEvent.Start -> onStarted()
                     is VideoRecordEvent.Finalize -> onFinished()
