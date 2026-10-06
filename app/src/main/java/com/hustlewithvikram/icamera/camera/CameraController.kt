@@ -1,7 +1,10 @@
 package com.hustlewithvikram.icamera.camera
 
 import android.content.Context
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.os.Build
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ConcurrentCamera
@@ -46,7 +49,9 @@ data class CameraCapabilities(
     val isoMin: Int,
     val isoMax: Int,
     val exposureTimeMinNs: Long,
-    val exposureTimeMaxNs: Long
+    val exposureTimeMaxNs: Long,
+    val supportsUltraWide: Boolean = false,
+    val ultraWideZoomRatio: Float = 0.5f
 )
 
 enum class PhotoMode(val label: String, val extensionMode: Int?) {
@@ -76,12 +81,19 @@ class CameraController(private val context: Context) {
     var secondaryVideoCapture: VideoCapture<Recorder>? = null
         private set
 
+    private var ultraWideSelector: CameraSelector? = null
+    private var ultraWideZoomRatio: Float = 0.5f
+
+    fun getUltraWideSelector(): CameraSelector? = ultraWideSelector
+    fun getUltraWideZoomRatio(): Float = ultraWideZoomRatio
+
     fun bind(
         previewView: PreviewView,
         lifecycleOwner: LifecycleOwner,
         selector: CameraSelector,
         videoMode: Boolean,
         photoMode: PhotoMode = PhotoMode.PHOTO,
+        capabilitySelector: CameraSelector = selector,
         onReady: (CameraCapabilities) -> Unit,
         onError: (Throwable) -> Unit
     ) {
@@ -170,28 +182,81 @@ class CameraController(private val context: Context) {
                 val activeCamera = camera ?: return@addListener
                 val zoomState = activeCamera.cameraInfo.zoomState.value
                 val exposure = activeCamera.cameraInfo.exposureState
+                // Camera modes are capabilities of the underlying camera, not of the
+                // currently selected capture mode. Always calculate them from the stable
+                // logical selector so switching PHOTO <-> VIDEO cannot reorder the rail.
+                val capabilityInfo = runCatching {
+                    cameraProvider.getCameraInfo(capabilitySelector)
+                }.getOrNull() ?: activeCamera.cameraInfo
+
                 val supportedPhotoModes = mutableSetOf(PhotoMode.PHOTO)
                 val supportedFormats = runCatching {
-                    ImageCapture.getImageCaptureCapabilities(activeCamera.cameraInfo).supportedOutputFormats
+                    ImageCapture.getImageCaptureCapabilities(capabilityInfo).supportedOutputFormats
                 }.getOrDefault(setOf(ImageCapture.OUTPUT_FORMAT_JPEG))
 
-                if (!videoMode) {
-                    val extensionsManager = ExtensionsManager.getInstanceAsync(context, cameraProvider).get()
-                    listOf(PhotoMode.NIGHT, PhotoMode.HDR, PhotoMode.PORTRAIT, PhotoMode.RETOUCH, PhotoMode.AUTO).forEach { item ->
-                        if (item.extensionMode != null && runCatching {
-                                extensionsManager.isExtensionAvailable(selector, item.extensionMode)
-                            }.getOrDefault(false)) {
-                            supportedPhotoModes += item
-                        }
+                val extensionsManager = ExtensionsManager.getInstanceAsync(context, cameraProvider).get()
+                listOf(PhotoMode.NIGHT, PhotoMode.HDR, PhotoMode.PORTRAIT, PhotoMode.RETOUCH, PhotoMode.AUTO).forEach { item ->
+                    if (item.extensionMode != null && runCatching {
+                            extensionsManager.isExtensionAvailable(capabilitySelector, item.extensionMode)
+                        }.getOrDefault(false)) {
+                        supportedPhotoModes += item
                     }
                 }
 
                 val macroDistance = runCatching {
-                    androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
-                        .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+                    androidx.camera.camera2.interop.Camera2CameraInfo.from(capabilityInfo)
+                        .getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
                 }.getOrDefault(0f)
-                if (!videoMode && macroDistance > 0f) supportedPhotoModes += PhotoMode.MACRO
-                if (!videoMode && (supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW) || supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW_JPEG))) supportedPhotoModes += PhotoMode.RAW
+                if (macroDistance > 0f) supportedPhotoModes += PhotoMode.MACRO
+                if (supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW) || supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW_JPEG)) {
+                    supportedPhotoModes += PhotoMode.RAW
+                }
+
+                // Discover a real physical ultra-wide lens. CameraX 1.4+ can bind a
+                // physical camera from a logical multi-camera without pretending that
+                // digital zoom below 1x exists.
+                var discoveredUltraWideSelector: CameraSelector? = null
+                var discoveredUltraWideRatio = 0.5f
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    runCatching {
+                        val logicalInfo = Camera2CameraInfo.from(capabilityInfo)
+                        if (logicalInfo.isLogicalMultiCameraSupported) {
+                            val physicalInfos = capabilityInfo.physicalCameraInfos
+                            val logicalFocal = logicalInfo.getCameraCharacteristic(
+                                CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS
+                            )?.minOrNull()
+
+                            val candidate = physicalInfos.mapNotNull { physicalInfo ->
+                                val physicalFacing = physicalInfo.lensFacing
+                                if (physicalFacing != CameraSelector.LENS_FACING_BACK) return@mapNotNull null
+
+                                val focal = Camera2CameraInfo.from(physicalInfo)
+                                    .getCameraCharacteristic(
+                                        CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS
+                                    )?.minOrNull() ?: return@mapNotNull null
+
+                                val selector = physicalInfo.cameraSelector
+                                val ratio = if (logicalFocal != null && logicalFocal > 0f) {
+                                    focal / logicalFocal
+                                } else {
+                                    0f
+                                }
+
+                                Triple(ratio, focal, selector)
+                            }
+                                .filter { it.first in 0.35f..0.80f }
+                                .minByOrNull { it.second }
+
+                            if (candidate != null) {
+                                discoveredUltraWideRatio = candidate.first.coerceIn(0.35f, 0.80f)
+                                discoveredUltraWideSelector = candidate.third
+                            }
+                        }
+                    }
+                }
+
+                ultraWideSelector = discoveredUltraWideSelector
+                ultraWideZoomRatio = discoveredUltraWideRatio
                 if (photoMode == PhotoMode.MACRO) setMacro(true, macroDistance) else setMacro(false, 0f)
 
                 onReady(
@@ -226,7 +291,9 @@ class CameraController(private val context: Context) {
                         isoMin = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.lower ?: 100 }.getOrDefault(100),
                         isoMax = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.upper ?: 800 }.getOrDefault(800),
                         exposureTimeMinNs = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.lower ?: 1_000_000L }.getOrDefault(1_000_000L),
-                        exposureTimeMaxNs = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.upper ?: 100_000_000L }.getOrDefault(100_000_000L)
+                        exposureTimeMaxNs = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.upper ?: 100_000_000L }.getOrDefault(100_000_000L),
+                        supportsUltraWide = discoveredUltraWideSelector != null,
+                        ultraWideZoomRatio = discoveredUltraWideRatio
                     )
                 )
             } catch (t: Throwable) {
