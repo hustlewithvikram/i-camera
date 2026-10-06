@@ -1,5 +1,6 @@
 package com.hustlewithvikram.icamera.ui.camera
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,7 +37,7 @@ fun CameraSettingsPanel(
                 Text("HARDWARE", color = Color(0xFF9E9E9E), style = MaterialTheme.typography.labelSmall)
             }
             if (capabilities?.supportsLowLightBoost == true) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth().clickable { onLowLightBoostChange(!lowLightBoost) }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Low Light Boost", color = Color.White)
                     Text(if (lowLightBoost) "ON" else "OFF", color = if (lowLightBoost) Color(0xFFFFC107) else Color.White)
                 }
