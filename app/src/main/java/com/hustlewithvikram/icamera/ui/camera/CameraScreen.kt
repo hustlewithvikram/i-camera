@@ -29,6 +29,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -472,16 +473,19 @@ fun CameraScreen() {
 
             ZoomControl(
                 maxZoom = capabilities?.maxZoomRatio ?: 1f,
+                hardwareZoomRatios = capabilities?.hardwareZoomRatios ?: emptyList(),
                 supportsUltraWide = capabilities?.supportsUltraWide == true && !frontCamera,
                 ultraWideRatio = capabilities?.ultraWideZoomRatio ?: 0.5f,
                 value = zoom,
                 onValueChange = { ratio ->
-                    if (ratio < 1f) {
+                    val wideRatio = capabilities?.ultraWideZoomRatio ?: 0.5f
+                    if (ratio < 1f && capabilities?.supportsUltraWide == true && !frontCamera) {
                         ultraWide = true
-                        zoom = 0.5f
+                        zoom = ratio.coerceIn(wideRatio, 0.98f)
                     } else {
                         ultraWide = false
-                        zoom = ratio
+                        zoom = ratio.coerceIn(1f, capabilities?.maxZoomRatio ?: 1f)
+                        controller.setZoom(zoom)
                     }
                 }
             )
@@ -783,6 +787,7 @@ private fun PhotoModeSelector(
 @Composable
 private fun ZoomControl(
     maxZoom: Float,
+    hardwareZoomRatios: List<Float>,
     supportsUltraWide: Boolean,
     ultraWideRatio: Float,
     value: Float,
@@ -790,44 +795,128 @@ private fun ZoomControl(
 ) {
     if (maxZoom <= 1.01f && !supportsUltraWide) return
 
-    val options = buildList {
-        if (supportsUltraWide) add(ultraWideRatio.coerceIn(0.5f, 0.8f))
-        add(1f)
-        if (maxZoom >= 2f) add(2f)
-        if (maxZoom >= 3f) add(3f)
-    }.distinct()
+    val wholeMax = maxZoom.toInt().coerceAtLeast(1)
+    val normalStops = remember(maxZoom, hardwareZoomRatios, supportsUltraWide, ultraWideRatio) {
+        buildList {
+            if (supportsUltraWide) add(ultraWideRatio.coerceIn(0.35f, 0.98f))
+            add(1f)
+            addAll((2..minOf(5, wholeMax)).map { it.toFloat() })
+            addAll(hardwareZoomRatios.filter { it >= 1f && it <= maxZoom })
+            if (maxZoom > 5f) add(maxZoom)
+        }
+            .map { (it * 10f).roundToInt() / 10f }
+            .distinct()
+            .sorted()
+    }
 
-    Row(
+    var scrubbing by remember { mutableStateOf(false) }
+    var scrubZoom by remember { mutableFloatStateOf(value.coerceIn(1f, maxZoom)) }
+    val scrubMax = maxZoom.coerceAtLeast(1f)
+    val scrubSteps = remember(scrubMax) {
+        (1..scrubMax.toInt().coerceAtLeast(1)).map { it.toFloat() } +
+            listOf(scrubMax).filter { it % 1f != 0f }
+    }
+
+    fun formatZoom(ratio: Float): String {
+        return if (ratio % 1f == 0f) {
+            ratio.toInt().toString()
+        } else {
+            String.format(Locale.US, "%.1f", ratio)
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 4.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        options.forEach { ratio ->
-            val active = abs(value - ratio) < 0.08f
-            Box(
-                modifier = Modifier
-                    .size(if (active) 44.dp else 38.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (active) Color(0x995C5B45) else Color.Transparent
-                    )
-                    .clickable { onValueChange(ratio) },
-                contentAlignment = Alignment.Center
-            ) {
-                val label = if (ratio < 1f) {
-                    String.format(Locale.US, "%.1f", ratio)
-                } else if (ratio % 1f == 0f) {
-                    ratio.toInt().toString()
-                } else {
-                    String.format(Locale.US, "%.1f", ratio)
-                }
-                Text(
-                    text = label + "×",
-                    color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.92f),
-                    style = MaterialTheme.typography.labelLarge
+            .padding(bottom = 4.dp)
+            .pointerInput(maxZoom, supportsUltraWide, ultraWideRatio) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = {
+                        scrubbing = true
+                        scrubZoom = value.coerceIn(1f, scrubMax)
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        val next = (scrubZoom + dragAmount.x / 32f)
+                            .coerceIn(1f, scrubMax)
+                        scrubZoom = next
+                        onValueChange(next)
+                    },
+                    onDragEnd = {
+                        scrubbing = false
+                        val settled = (scrubZoom * 10f).roundToInt() / 10f
+                        scrubZoom = settled
+                        onValueChange(settled)
+                    },
+                    onDragCancel = {
+                        scrubbing = false
+                    }
                 )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        if (scrubbing) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = Color(0xD9000000)
+            ) {
+                Column(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = formatZoom(scrubZoom) + "×",
+                        color = Color(0xFFFFD60A),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp)
+                    ) {
+                        items(scrubSteps, key = { it.toString() }) { stop ->
+                            val active = abs(scrubZoom - stop) < 0.12f
+                            Text(
+                                text = formatZoom(stop),
+                                color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.72f),
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp)
+            ) {
+                items(normalStops, key = { it.toString() }) { ratio ->
+                    val active = abs(value - ratio) < 0.08f
+                    Box(
+                        modifier = Modifier
+                            .size(if (active) 44.dp else 38.dp)
+                            .clip(CircleShape)
+                            .clickable { onValueChange(ratio) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (active) {
+                            Surface(
+                                modifier = Modifier.fillMaxSize(),
+                                shape = CircleShape,
+                                color = Color(0x995C5B45)
+                            ) {}
+                        }
+                        Text(
+                            text = formatZoom(ratio) + "×",
+                            color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.92f),
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
             }
         }
     }
@@ -923,7 +1012,7 @@ private fun CameraModeRail(
             .padding(top = 2.dp, bottom = 8.dp)
     ) {
         val itemWidth = 74.dp
-        val sidePadding = ((maxWidth - itemWidth) / 2f).coerceAtLeast(0.dp)
+        val sidePadding = (maxWidth / 2f).coerceAtLeast(0.dp)
 
         fun centeredIndex(): Int? {
             val visible = listState.layoutInfo.visibleItemsInfo
@@ -1038,7 +1127,8 @@ private fun CameraModeRail(
 
                 Box(
                     modifier = Modifier
-                        .size(width = itemWidth, height = 38.dp)
+                        .height(38.dp)
+                        .wrapContentWidth()
                         .graphicsLayer {
                             val p = if (active) 1f else progress
                             scaleX = 0.84f + p * 0.16f
@@ -1106,6 +1196,9 @@ private fun CameraModeRail(
 
                     Text(
                         text = item.label,
+                        maxLines = 1,
+                        softWrap = false,
+                        modifier = Modifier.padding(horizontal = 10.dp),
                         color = if (active) {
                             Color(0xFFFFD60A)
                         } else {
