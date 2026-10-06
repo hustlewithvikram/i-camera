@@ -209,6 +209,7 @@ fun CameraScreen() {
             selector = selector,
             videoMode = mode == CaptureMode.VIDEO || mode == CaptureMode.DUAL,
             photoMode = mode.photoMode ?: PhotoMode.PHOTO,
+            capabilitySelector = mainSelector,
             onReady = { caps ->
                 val stableModes = stablePhotoModes ?: caps.supportedPhotoModes.also {
                     stablePhotoModes = it
@@ -232,7 +233,7 @@ fun CameraScreen() {
         )
     }
 
-    LaunchedEffect(mode, frontCamera) {
+    LaunchedEffect(mode, frontCamera, ultraWide) {
         previewScale = 0.965f
         previewAlpha = 0.72f
         kotlinx.coroutines.delay(45)
@@ -654,13 +655,15 @@ private fun PhotoModeSelector(
 @Composable
 private fun ZoomControl(
     maxZoom: Float,
+    supportsUltraWide: Boolean,
+    ultraWideRatio: Float,
     value: Float,
     onValueChange: (Float) -> Unit
 ) {
-    if (maxZoom <= 1.01f) return
+    if (maxZoom <= 1.01f && !supportsUltraWide) return
 
     val options = buildList {
-        if (maxZoom >= 0.6f) add(0.5f.coerceAtLeast(1f / maxZoom))
+        if (supportsUltraWide) add(ultraWideRatio.coerceIn(0.5f, 0.8f))
         add(1f)
         if (maxZoom >= 2f) add(2f)
         if (maxZoom >= 3f) add(3f)
@@ -682,7 +685,7 @@ private fun ZoomControl(
                     .background(
                         if (active) Color(0x995C5B45) else Color.Transparent
                     )
-                    .clickable { onValueChange(ratio.coerceIn(1f, maxZoom)) },
+                    .clickable { onValueChange(ratio) },
                 contentAlignment = Alignment.Center
             ) {
                 val label = if (ratio < 1f) {
