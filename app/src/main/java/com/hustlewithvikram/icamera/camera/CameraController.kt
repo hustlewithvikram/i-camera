@@ -1,6 +1,7 @@
 package com.hustlewithvikram.icamera.camera
 
 import android.content.Context
+import android.hardware.camera2.CaptureRequest
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ConcurrentCamera
@@ -46,7 +47,8 @@ enum class PhotoMode(val label: String, val extensionMode: Int?) {
     HDR("HDR", ExtensionMode.HDR),
     PORTRAIT("PORTRAIT", ExtensionMode.BOKEH),
     RETOUCH("RETOUCH", ExtensionMode.FACE_RETOUCH),
-    AUTO("AUTO", ExtensionMode.AUTO)
+    AUTO("AUTO", ExtensionMode.AUTO),
+    MACRO("MACRO", null)
 }
 
 @androidx.camera.camera2.interop.ExperimentalCamera2Interop
@@ -189,10 +191,7 @@ class CameraController(private val context: Context) {
                         supportsRawJpeg = supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW_JPEG),
                         supportsZeroShutterLag = false,
                         supportsConcurrentCamera = cameraProvider.availableConcurrentCameraInfos.isNotEmpty(),
-                        macroMinFocusDistance = runCatching {
-                            androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
-                                .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
-                        }.getOrDefault(0f)
+                        macroMinFocusDistance = macroDistance
                     )
                 )
             } catch (t: Throwable) {
@@ -301,6 +300,30 @@ class CameraController(private val context: Context) {
 
     fun setExposure(index: Int) {
         camera?.cameraControl?.setExposureCompensationIndex(index)
+    }
+
+    @androidx.camera.camera2.interop.ExperimentalCamera2Interop
+    fun setMacro(enabled: Boolean, minimumFocusDistance: Float) {
+        val activeCamera = camera ?: return
+        val camera2Control = androidx.camera.camera2.interop.Camera2CameraControl.from(activeCamera.cameraControl)
+        val options = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
+        if (enabled && minimumFocusDistance > 0f) {
+            options.setCaptureRequestOption(
+                CaptureRequest.CONTROL_AF_MODE,
+                CaptureRequest.CONTROL_AF_MODE_OFF
+            )
+            options.setCaptureRequestOption(
+                CaptureRequest.LENS_FOCUS_DISTANCE,
+                minimumFocusDistance
+            )
+        } else {
+            options.setCaptureRequestOption(
+                CaptureRequest.CONTROL_AF_MODE,
+                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+            )
+            options.clearCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE)
+        }
+        camera2Control.setCaptureRequestOptions(options.build())
     }
 
     fun setTorch(enabled: Boolean) {
