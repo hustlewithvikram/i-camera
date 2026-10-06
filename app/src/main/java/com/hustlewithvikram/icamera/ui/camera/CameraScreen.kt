@@ -96,7 +96,8 @@ import kotlinx.coroutines.withContext
 
 private enum class CaptureMode(val label: String) {
     PHOTO("PHOTO"),
-    VIDEO("VIDEO")
+    VIDEO("VIDEO"),
+    DUAL("DUAL")
 }
 
 private enum class FlashMode {
@@ -111,6 +112,9 @@ fun CameraScreen() {
     val lifecycleOwner = LocalLifecycleOwner.current
     val controller = remember { CameraController(context) }
     val capture = remember { CameraCapture(context) }
+    val secondaryPreviewView = remember {
+        PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER }
+    }
     val previewView = remember {
         PreviewView(context).apply {
             scaleType = PreviewView.ScaleType.FILL_CENTER
@@ -147,6 +151,19 @@ fun CameraScreen() {
     }
 
     fun bindCamera() {
+        if (mode == CaptureMode.DUAL) {
+            error = null
+            controller.bindConcurrent(
+                primaryPreviewView = previewView,
+                secondaryPreviewView = secondaryPreviewView,
+                lifecycleOwner = lifecycleOwner,
+                onReady = {
+                    capabilities = capabilities?.copy(supportsConcurrentCamera = true)
+                },
+                onError = { error = "Dual camera is not supported by this device configuration." }
+            )
+            return
+        }
         val selector = if (frontCamera) {
             CameraSelector.DEFAULT_FRONT_CAMERA
         } else {
@@ -229,6 +246,17 @@ fun CameraScreen() {
             }
         )
 
+        if (mode == CaptureMode.DUAL) {
+            AndroidView(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 92.dp, end = 14.dp)
+                    .size(width = 128.dp, height = 180.dp)
+                    .clip(RoundedCornerShape(20.dp)),
+                factory = { secondaryPreviewView }
+            )
+        }
+
         if (showGrid) {
             GridOverlay(Modifier.fillMaxSize())
         }
@@ -307,7 +335,7 @@ fun CameraScreen() {
                 isRecording = isRecording,
                 lastPhotoUri = lastPhotoUri,
                 onModeChange = { nextMode ->
-                    if (!isRecording) {
+                    if (!isRecording && (nextMode != CaptureMode.DUAL || capabilities?.supportsConcurrentCamera == true)) {
                         mode = nextMode
                     }
                 },
@@ -330,7 +358,14 @@ fun CameraScreen() {
                             ) == PackageManager.PERMISSION_GRANTED
 
                             if (micGranted) {
-                                controller.startRecording(
+                                if (mode == CaptureMode.DUAL) {
+                                    controller.startDualRecording(
+                                        capture = capture,
+                                        withAudio = true,
+                                        onStarted = { isRecording = true },
+                                        onFinished = { isRecording = false }
+                                    )
+                                } else controller.startRecording(
                                     capture = capture,
                                     withAudio = true,
                                     onStarted = { isRecording = true },
@@ -581,6 +616,13 @@ private fun BottomControls(
                     label = CaptureMode.VIDEO.label,
                     selected = mode == CaptureMode.VIDEO,
                     onClick = { onModeChange(CaptureMode.VIDEO) }
+                )
+            }
+            if (canVideo && hasFrontCamera) {
+                ModeLabel(
+                    label = CaptureMode.DUAL.label,
+                    selected = mode == CaptureMode.DUAL,
+                    onClick = { onModeChange(CaptureMode.DUAL) }
                 )
             }
 
