@@ -858,6 +858,7 @@ private fun CameraModeRail(
                         .clickable {
                             if (!active) {
                                 scope.launch { centerMode(itemIndex) }
+                                onSelected(item)
                             } else {
                                 onShowAllModes()
                             }
