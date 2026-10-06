@@ -317,6 +317,26 @@ fun CameraScreen() {
                 PhotoModeSelector(capabilities!!.supportedPhotoModes.toList(), photoMode) { photoMode = it }
             }
 
+            AnimatedVisibility(
+                visible = showSettings,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { -it / 3 }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { -it / 3 })
+            ) {
+                CameraSettingsPanel(
+                    capabilities = capabilities,
+                    lowLightBoost = lowLightBoost,
+                    onLowLightBoostChange = {
+                        lowLightBoost = it
+                        controller.setLowLightBoost(it)
+                    },
+                    torchStrength = torchStrength,
+                    onTorchStrengthChange = {
+                        torchStrength = it
+                        controller.setTorchStrength(it.toInt().coerceAtLeast(1))
+                    }
+                )
+            }
+
             Spacer(Modifier.weight(1f))
 
             AnimatedVisibility(
