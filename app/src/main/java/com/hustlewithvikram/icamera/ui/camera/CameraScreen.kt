@@ -743,32 +743,6 @@ private fun BottomControls(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            if (canVideo) {
-                ModeLabel(
-                    label = CaptureMode.VIDEO.label,
-                    selected = mode == CaptureMode.VIDEO,
-                    onClick = { onModeChange(CaptureMode.VIDEO) }
-                )
-            }
-            if (canVideo && hasFrontCamera) {
-                ModeLabel(
-                    label = CaptureMode.DUAL.label,
-                    selected = mode == CaptureMode.DUAL,
-                    onClick = { onModeChange(CaptureMode.DUAL) }
-                )
-            }
-
-            ModeLabel(
-                label = CaptureMode.PHOTO.label,
-                selected = mode == CaptureMode.PHOTO,
-                onClick = { onModeChange(CaptureMode.PHOTO) }
-            )
-        }
-
-        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.navigationBars)
