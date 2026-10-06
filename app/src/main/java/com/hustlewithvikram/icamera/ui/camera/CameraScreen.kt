@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.MediaStore
 import android.view.MotionEvent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -26,6 +27,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -96,6 +98,12 @@ import com.hustlewithvikram.icamera.camera.CameraCapabilities
 import com.hustlewithvikram.icamera.camera.CameraCapture
 import com.hustlewithvikram.icamera.camera.CameraController
 import com.hustlewithvikram.icamera.camera.PhotoMode
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_PDF
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER_MODE_FULL
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -117,6 +125,10 @@ private enum class CaptureMode(
     HDR("HDR", PhotoMode.HDR),
     RETOUCH("RETOUCH", PhotoMode.RETOUCH),
     AUTO("AUTO", PhotoMode.AUTO),
+    PANORAMA("PANORAMA"),
+    DOCUMENT("DOCUMENT"),
+    SLOW_MOTION("SLOW MOTION"),
+    TIMELAPSE("TIMELAPSE"),
     DUAL("DUAL", null)
 }
 
@@ -167,14 +179,35 @@ fun CameraScreen() {
     val microphoneLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted && mode == CaptureMode.VIDEO) {
-            controller.startRecording(
-                capture = capture,
-                withAudio = true,
-                onStarted = { isRecording = true },
-                onFinished = { isRecording = false }
-            )
+        if (granted && mode.isVideoCaptureMode()) {
+            if (mode == CaptureMode.DUAL) {
+                controller.startDualRecording(
+                    capture = capture,
+                    withAudio = true,
+                    onStarted = { isRecording = true },
+                    onFinished = { isRecording = false }
+                )
+            } else {
+                controller.startRecording(
+                    capture = capture,
+                    withAudio = true,
+                    onStarted = { isRecording = true },
+                    onFinished = { isRecording = false }
+                )
+            }
         }
+    }
+
+    val documentScannerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            GmsDocumentScanningResult.fromActivityResultIntent(result.data)
+                ?.getPages()
+                ?.firstOrNull()
+                ?.let { lastPhotoUri = it.imageUri }
+        }
+        mode = CaptureMode.PHOTO
     }
 
     fun bindCamera() {
@@ -244,6 +277,33 @@ fun CameraScreen() {
                 error = "This camera configuration is not supported on this device."
             }
         )
+    }
+
+    LaunchedEffect(mode) {
+        if (mode == CaptureMode.DOCUMENT) {
+            val activity = context as? androidx.activity.ComponentActivity
+            if (activity == null) {
+                mode = CaptureMode.PHOTO
+            } else {
+                val options = GmsDocumentScannerOptions.Builder()
+                    .setGalleryImportAllowed(false)
+                    .setPageLimit(12)
+                    .setResultFormats(RESULT_FORMAT_JPEG, RESULT_FORMAT_PDF)
+                    .setScannerMode(SCANNER_MODE_FULL)
+                    .build()
+                val scanner = GmsDocumentScanning.getClient(options)
+                scanner.getStartScanIntent(activity)
+                    .addOnSuccessListener { intentSender ->
+                        documentScannerLauncher.launch(
+                            IntentSenderRequest.Builder(intentSender).build()
+                        )
+                    }
+                    .addOnFailureListener {
+                        error = "Document scanning is unavailable on this device."
+                        mode = CaptureMode.PHOTO
+                    }
+            }
+        }
     }
 
     LaunchedEffect(mode, frontCamera, ultraWide) {
@@ -424,6 +484,8 @@ fun CameraScreen() {
                 }
             )
 
+            Spacer(Modifier.size(6.dp))
+
             BottomControls(
                 mode = mode,
                 canVideo = capabilities?.hasVideo == true,
@@ -436,14 +498,26 @@ fun CameraScreen() {
                     }
                 },
                 onCapture = {
-                    if (mode != CaptureMode.VIDEO && mode != CaptureMode.DUAL) {
-                        controller.imageCapture?.let { image ->
-                            image.flashMode = flashMode.toImageFlashMode()
-                            capture.capture(image) { uri ->
+                    if (mode == CaptureMode.DUAL) {
+                        if (isRecording) {
+                            controller.stopRecordingIfNeeded()
+                            isRecording = false
+                        } else {
+                            controller.captureDualPhoto(
+                                primary = controller.imageCapture ?: return@CameraScreen,
+                                secondary = controller.secondaryImageCapture ?: return@BottomControlsCapture
+                            ) { uri ->
                                 if (uri != null) lastPhotoUri = uri
                             }
                         }
-                    } else {
+                    } else if (mode == CaptureMode.PANORAMA) {
+                        controller.imageCapture?.let { image ->
+                            image.flashMode = ImageCapture.FLASH_MODE_OFF
+                            capture.capturePanorama(image) { uri ->
+                                if (uri != null) lastPhotoUri = uri
+                            }
+                        }
+                    } else if (mode.isVideoCaptureMode()) {
                         if (isRecording) {
                             controller.stopRecordingIfNeeded()
                             isRecording = false
@@ -471,6 +545,31 @@ fun CameraScreen() {
                                 microphoneLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         }
+                    } else if (mode != CaptureMode.DOCUMENT) {
+                        controller.imageCapture?.let { image ->
+                            image.flashMode = flashMode.toImageFlashMode()
+                            capture.capture(image) { uri ->
+                                if (uri != null) lastPhotoUri = uri
+                            }
+                        }
+                    }
+                },
+                onLongCapture = {
+                    if (mode == CaptureMode.DUAL && !isRecording) {
+                        val micGranted = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.RECORD_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (micGranted) {
+                            controller.startDualRecording(
+                                capture = capture,
+                                withAudio = true,
+                                onStarted = { isRecording = true },
+                                onFinished = { isRecording = false }
+                            )
+                        } else {
+                            microphoneLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
                     }
                 },
                 onSwitchCamera = {
@@ -482,6 +581,8 @@ fun CameraScreen() {
                     }
                 }
             )
+
+            Spacer(Modifier.size(6.dp))
 
             val captureModes = stableCaptureModes
                 ?: availableCaptureModes(capabilities)
@@ -530,6 +631,14 @@ fun CameraScreen() {
             }
         }
     }
+}
+
+private fun CaptureMode.isVideoCaptureMode(): Boolean = when (this) {
+    CaptureMode.VIDEO,
+    CaptureMode.SLOW_MOTION,
+    CaptureMode.TIMELAPSE,
+    CaptureMode.DUAL -> true
+    else -> false
 }
 
 private fun FlashMode.toImageFlashMode(): Int = when (this) {
@@ -771,7 +880,11 @@ private fun availableCaptureModes(capabilities: CameraCapabilities?): List<Captu
         if (capabilities.supportedPhotoModes.contains(PhotoMode.HDR)) add(CaptureMode.HDR)
         if (capabilities.supportedPhotoModes.contains(PhotoMode.RETOUCH)) add(CaptureMode.RETOUCH)
         if (capabilities.supportedPhotoModes.contains(PhotoMode.AUTO)) add(CaptureMode.AUTO)
-        if (capabilities.supportsConcurrentCamera && capabilities.hasFrontCamera) add(CaptureMode.DUAL)
+        if (capabilities.supportsPanorama) add(CaptureMode.PANORAMA)
+        if (capabilities.supportsDocumentScan) add(CaptureMode.DOCUMENT)
+        if (capabilities.supportsSlowMotion) add(CaptureMode.SLOW_MOTION)
+        if (capabilities.supportsTimelapse) add(CaptureMode.TIMELAPSE)
+        if (capabilities.supportsDualPhotoVideo && capabilities.hasFrontCamera) add(CaptureMode.DUAL)
     }
 }
 
@@ -1128,6 +1241,7 @@ private fun BottomControls(
     lastPhotoUri: Uri?,
     onModeChange: (CaptureMode) -> Unit,
     onCapture: () -> Unit,
+    onLongCapture: () -> Unit,
     onSwitchCamera: () -> Unit
 ) {
     Row(
@@ -1141,7 +1255,8 @@ private fun BottomControls(
 
         ShutterButton(
             isRecording = isRecording,
-            onClick = onCapture
+            onClick = onCapture,
+            onLongClick = onLongCapture
         )
 
         if (hasFrontCamera) {
@@ -1203,7 +1318,8 @@ private fun CameraIconButton(
 @Composable
 private fun ShutterButton(
     isRecording: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongClick: () -> Unit = {}
 ) {
     val scale = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
@@ -1215,7 +1331,9 @@ private fun ShutterButton(
                 scaleX = scale.value
                 scaleY = scale.value
             }
-            .clickable {
+            .combinedClickable(
+                onLongClick = onLongClick
+            ) {
                 scope.launch {
                     scale.animateTo(
                         0.88f,
