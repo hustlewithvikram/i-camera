@@ -25,11 +25,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.13"
 
       - name: Set up Android SDK
         run: |
@@ -43,16 +42,16 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Verify toolchain
         run: |
           java -version
-          gradle --version
-          sdkmanager --list_installed | grep -E "platforms;android-36|build-tools;35.0.0"
+          bash ./gradlew --version
+          sdkmanager --list_installed | grep -E "platforms;android-36|build-tools;36.0.0"
 
       - name: Build debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
+        run: bash ./gradlew --no-daemon --stacktrace assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
