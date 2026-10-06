@@ -64,6 +64,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -763,26 +764,29 @@ private fun CameraModeRail(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = sidePadding)
         ) {
             items(modes, key = { it.name }) { item ->
+                val itemIndex = modes.indexOf(item)
                 val active = item == selected
-                val scale = remember { Animatable(1f) }
+                val scale = remember { Animatable(if (active) 1f else 0.84f) }
                 var verticalDrag by remember { mutableFloatStateOf(0f) }
+                val itemVisualProgress by remember(itemIndex, modes) {
+                    derivedStateOf {
+                        val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
+                        val center = (listState.layoutInfo.viewportStartOffset +
+                            listState.layoutInfo.viewportEndOffset) / 2f
+                        val itemCenter = info?.let { it.offset + it.size / 2f } ?: center
+                        (1f - (kotlin.math.abs(itemCenter - center) / (92.dp.toPx() * 2.2f)))
+                            .coerceIn(0f, 1f)
+                    }
+                }
 
                 LaunchedEffect(active) {
                     if (active) {
-                        scale.snapTo(0.82f)
+                        scale.snapTo(0.86f)
                         scale.animateTo(
                             1f,
                             spring(
                                 dampingRatio = 0.62f,
                                 stiffness = Spring.StiffnessMediumLow
-                            )
-                        )
-                    } else {
-                        scale.animateTo(
-                            0.82f,
-                            spring(
-                                dampingRatio = 0.82f,
-                                stiffness = Spring.StiffnessMedium
                             )
                         )
                     }
@@ -792,9 +796,11 @@ private fun CameraModeRail(
                     modifier = Modifier
                         .size(width = 92.dp, height = 42.dp)
                         .graphicsLayer {
-                            scaleX = scale.value
-                            scaleY = scale.value
-                            alpha = if (active) 1f else 0.46f
+                            val carouselProgress = if (active) 1f else itemVisualProgress
+                            val dynamicScale = 0.78f + carouselProgress * 0.22f
+                            scaleX = if (active) scale.value else dynamicScale
+                            scaleY = if (active) scale.value else dynamicScale
+                            alpha = 0.30f + carouselProgress * 0.70f
                         }
                         .pointerInput(active, item) {
                             detectVerticalDragGestures(
