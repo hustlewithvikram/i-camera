@@ -47,6 +47,17 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
+      - name: Install stable debug signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          curl -fsSL "https://android.googlesource.com/platform/frameworks/support/+/3eace72feea5fbf3f491f1810352ce6a7fc745cf/development/keystore/debug.keystore?format=TEXT" |
+            sed '1d' |
+            tr -d '\n' |
+            base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore"             -storepass android -alias AndroidDebugKey -keypass android -v |
+            grep -E "Alias name:|SHA256:"
+
       - name: Verify toolchain
         run: |
           java -version
