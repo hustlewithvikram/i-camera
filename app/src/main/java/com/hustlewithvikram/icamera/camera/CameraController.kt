@@ -65,6 +65,7 @@ class CameraController(private val context: Context) {
         lifecycleOwner: LifecycleOwner,
         selector: CameraSelector,
         videoMode: Boolean,
+        photoMode: PhotoMode = PhotoMode.PHOTO,
         onReady: (CameraCapabilities) -> Unit,
         onError: (Throwable) -> Unit
     ) {
@@ -117,11 +118,29 @@ class CameraController(private val context: Context) {
                     throw IllegalStateException("Video capture is not supported.")
                 }
 
-                camera = cameraProvider.bindToLifecycle(
-                    lifecycleOwner,
-                    selector,
-                    *useCases.toTypedArray()
-                )
+                val extensionConfig = if (!videoMode && photoMode.extensionMode != null) {
+                    val extensionsManager = ExtensionsManager.getInstanceAsync(context, cameraProvider).get()
+                    if (extensionsManager.isExtensionAvailable(selector, photoMode.extensionMode)) {
+                        androidx.camera.extensions.ExtensionSessionConfig.Builder(
+                            photoMode.extensionMode,
+                            extensionsManager
+                        ).addUseCase(preview).addUseCase(image!!).build()
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+
+                camera = if (extensionConfig != null) {
+                    cameraProvider.bindToLifecycle(lifecycleOwner, selector, extensionConfig)
+                } else {
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        selector,
+                        *useCases.toTypedArray()
+                    )
+                }
                 imageCapture = image
                 videoCapture = video
 
