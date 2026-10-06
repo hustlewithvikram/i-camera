@@ -13,7 +13,6 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.toBitmap
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
@@ -211,7 +210,7 @@ class CameraCapture(private val context: Context) {
                 object : ImageCapture.OnImageCapturedCallback() {
                     override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
                         val bitmap = runCatching {
-                            var result = image.toBitmap()
+                            var result = imageProxyToBitmap(image)
                             val rotation = image.imageInfo.rotationDegrees
                             if (rotation != 0) {
                                 val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
@@ -257,6 +256,60 @@ class CameraCapture(private val context: Context) {
         }
 
         captureNext(0)
+    }
+
+
+    private fun imageProxyToBitmap(image: androidx.camera.core.ImageProxy): Bitmap {
+        val yBuffer = image.planes[0].buffer
+        val uBuffer = image.planes[1].buffer
+        val vBuffer = image.planes[2].buffer
+        val ySize = yBuffer.remaining()
+        val uSize = uBuffer.remaining()
+        val vSize = vBuffer.remaining()
+        val nv21 = ByteArray(ySize + uSize + vSize)
+        yBuffer.get(nv21, 0, ySize)
+        val chromaRowStride = image.planes[1].rowStride
+        val chromaPixelStride = image.planes[1].pixelStride
+        var offset = ySize
+        val u = ByteArray(uSize)
+        val v = ByteArray(vSize)
+        uBuffer.get(u)
+        vBuffer.get(v)
+        if (chromaPixelStride == 1) {
+            v.copyInto(nv21, offset)
+            offset += v.size
+            u.copyInto(nv21, offset)
+        } else {
+            var row = 0
+            var dst = ySize
+            while (row < image.height / 2) {
+                val rowStart = row * chromaRowStride
+                var col = 0
+                while (col < image.width / 2) {
+                    val src = rowStart + col * chromaPixelStride
+                    if (src < v.size && dst + 1 < nv21.size) {
+                        nv21[dst++] = v[src]
+                        nv21[dst++] = u[src]
+                    }
+                    col++
+                }
+                row++
+            }
+        }
+        val yuv = android.graphics.YuvImage(
+            nv21,
+            android.graphics.ImageFormat.NV21,
+            image.width,
+            image.height,
+            null
+        )
+        val stream = java.io.ByteArrayOutputStream()
+        if (!yuv.compressToJpeg(android.graphics.Rect(0, 0, image.width, image.height), 92, stream)) {
+            throw IllegalStateException("Unable to convert captured frame.")
+        }
+        return android.graphics.BitmapFactory.decodeByteArray(
+            stream.toByteArray(), 0, stream.size()
+        ) ?: throw IllegalStateException("Unable to decode captured frame.")
     }
 
     fun startVideo(
