@@ -505,15 +505,8 @@ fun CameraScreen() {
                             controller.stopRecordingIfNeeded()
                             isRecording = false
                         } else {
-                            val primary = controller.imageCapture
-                            val secondary = controller.secondaryImageCapture
-                            if (primary != null && secondary != null) {
-                                controller.captureDualPhoto(
-                                    primary = primary,
-                                    secondary = secondary
-                                ) { uri ->
-                                    if (uri != null) lastPhotoUri = uri
-                                }
+                            controller.captureDualPhoto(capture) { uri ->
+                                if (uri != null) lastPhotoUri = uri
                             }
                         }
                     } else if (mode == CaptureMode.PANORAMA) {
