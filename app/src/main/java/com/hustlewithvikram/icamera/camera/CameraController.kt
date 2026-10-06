@@ -42,7 +42,11 @@ data class CameraCapabilities(
     val supportsLowLightBoost: Boolean,
     val supportsTorchStrength: Boolean,
     val maxTorchStrengthLevel: Int,
-    val supportsLogicalMultiCamera: Boolean
+    val supportsLogicalMultiCamera: Boolean,
+    val isoMin: Int,
+    val isoMax: Int,
+    val exposureTimeMinNs: Long,
+    val exposureTimeMaxNs: Long
 )
 
 enum class PhotoMode(val label: String, val extensionMode: Int?) {
@@ -215,7 +219,11 @@ class CameraController(private val context: Context) {
                         supportsLowLightBoost = activeCamera.cameraInfo.isLowLightBoostSupported,
                         supportsTorchStrength = activeCamera.cameraInfo.isTorchStrengthSupported,
                         maxTorchStrengthLevel = activeCamera.cameraInfo.maxTorchStrengthLevel,
-                        supportsLogicalMultiCamera = activeCamera.cameraInfo.isLogicalMultiCameraSupported
+                        supportsLogicalMultiCamera = activeCamera.cameraInfo.isLogicalMultiCameraSupported,
+                        isoMin = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.lower ?: 100 }.getOrDefault(100),
+                        isoMax = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)?.upper ?: 800 }.getOrDefault(800),
+                        exposureTimeMinNs = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.lower ?: 1_000_000L }.getOrDefault(1_000_000L),
+                        exposureTimeMaxNs = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.upper ?: 100_000_000L }.getOrDefault(100_000_000L)
                     )
                 )
             } catch (t: Throwable) {
@@ -348,6 +356,17 @@ class CameraController(private val context: Context) {
             options.clearCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE)
         }
         camera2Control.setCaptureRequestOptions(options.build())
+    }
+
+    @androidx.camera.camera2.interop.ExperimentalCamera2Interop
+    fun setManualExposure(iso: Int, exposureTimeNs: Long) {
+        val activeCamera = camera ?: return
+        val control = androidx.camera.camera2.interop.Camera2CameraControl.from(activeCamera.cameraControl)
+        val options = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
+        options.setCaptureRequestOption(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+        options.setCaptureRequestOption(CaptureRequest.SENSOR_SENSITIVITY, iso)
+        options.setCaptureRequestOption(CaptureRequest.SENSOR_EXPOSURE_TIME, exposureTimeNs)
+        control.setCaptureRequestOptions(options.build())
     }
 
     fun setLowLightBoost(enabled: Boolean) {
