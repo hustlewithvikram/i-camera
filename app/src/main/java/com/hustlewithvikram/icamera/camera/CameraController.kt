@@ -52,7 +52,8 @@ enum class PhotoMode(val label: String, val extensionMode: Int?) {
     PORTRAIT("PORTRAIT", ExtensionMode.BOKEH),
     RETOUCH("RETOUCH", ExtensionMode.FACE_RETOUCH),
     AUTO("AUTO", ExtensionMode.AUTO),
-    MACRO("MACRO", null)
+    MACRO("MACRO", null),
+    RAW("RAW", null)
 }
 
 @androidx.camera.camera2.interop.ExperimentalCamera2Interop
@@ -99,7 +100,11 @@ class CameraController(private val context: Context) {
                     val formats = runCatching {
                         ImageCapture.getImageCaptureCapabilities(cameraProvider.getCameraInfo(selector)).supportedOutputFormats
                     }.getOrDefault(emptySet())
-                    if (formats.contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)) {
+                    if (photoMode == PhotoMode.RAW && formats.contains(ImageCapture.OUTPUT_FORMAT_RAW_JPEG)) {
+                        builder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_RAW_JPEG)
+                    } else if (photoMode == PhotoMode.RAW && formats.contains(ImageCapture.OUTPUT_FORMAT_RAW)) {
+                        builder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_RAW)
+                    } else if (formats.contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)) {
                         builder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
                     }
                     builder.build()
@@ -185,6 +190,7 @@ class CameraController(private val context: Context) {
                         .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
                 }.getOrDefault(0f)
                 if (!videoMode && macroDistance > 0f) supportedPhotoModes += PhotoMode.MACRO
+                if (!videoMode && (supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW) || supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW_JPEG))) supportedPhotoModes += PhotoMode.RAW
                 if (photoMode == PhotoMode.MACRO) setMacro(true, macroDistance) else setMacro(false, 0f)
 
                 onReady(
