@@ -154,7 +154,7 @@ fun CameraScreen() {
     var flashMode by remember { mutableStateOf(FlashMode.AUTO) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var ultraWide by remember { mutableStateOf(false) }
-    var stablePhotoModes by remember { mutableStateOf<Set<PhotoMode>?>(null) }
+    var stableCaptureModes by remember { mutableStateOf<List<CaptureMode>?>(null) }
     var exposure by remember { mutableIntStateOf(0) }
     var isRecording by remember { mutableStateOf(false) }
     var focusPoint by remember { mutableStateOf<Pair<Float, Float>?>(null) }
@@ -211,12 +211,25 @@ fun CameraScreen() {
             photoMode = mode.photoMode ?: PhotoMode.PHOTO,
             capabilitySelector = mainSelector,
             onReady = { caps ->
-                val stableModes = stablePhotoModes ?: caps.supportedPhotoModes.also {
-                    stablePhotoModes = it
+                // Freeze the mode rail from the first successful capability scan for
+                // this physical camera. VIDEO must never replace the PHOTO capability
+                // set with a different list (which previously made MACRO disappear
+                // and PRO appear).
+                val modesForCamera = stableCaptureModes ?: availableCaptureModes(caps).also {
+                    stableCaptureModes = it
                 }
-                capabilities = caps.copy(supportedPhotoModes = stableModes)
+                capabilities = caps.copy(
+                    supportedPhotoModes = caps.supportedPhotoModes
+                )
+
+                // If switching front/back makes the previous mode unavailable, fall
+                // back to PHOTO instead of letting the rail point at a missing item.
+                if (mode !in modesForCamera) {
+                    mode = CaptureMode.PHOTO
+                }
+
                 zoom = if (!frontCamera && ultraWide && caps.supportsUltraWide) {
-                    0.5f
+                    caps.ultraWideZoomRatio
                 } else {
                     zoom.coerceIn(1f, caps.maxZoomRatio)
                 }
@@ -270,7 +283,8 @@ fun CameraScreen() {
                             val next = (zoom * zoomChange).coerceIn(minZoom, maxZoom)
                             zoom = next
                             controller.setZoom(if (ultraWide) {
-                                (next / 0.5f).coerceIn(1f, maxZoom)
+                                val wideRatio = capabilities?.ultraWideZoomRatio ?: 0.5f
+                                (next / wideRatio).coerceIn(1f, maxZoom)
                             } else {
                                 next
                             })
@@ -463,15 +477,14 @@ fun CameraScreen() {
                     if (!isRecording) {
                         frontCamera = !frontCamera
                         ultraWide = false
-                        stablePhotoModes = null
+                        stableCaptureModes = null
                         flashMode = FlashMode.AUTO
                     }
                 }
             )
 
-            val captureModes = remember(capabilities, stablePhotoModes) {
-                availableCaptureModes(capabilities)
-            }
+            val captureModes = stableCaptureModes
+                ?: availableCaptureModes(capabilities)
 
             CameraModeRail(
                 selected = mode,
@@ -490,7 +503,7 @@ fun CameraScreen() {
         ModePickerSheet(
             visible = showModeSheet,
             selected = mode,
-            modes = remember(capabilities, stablePhotoModes) { availableCaptureModes(capabilities) },
+            modes = stableCaptureModes ?: availableCaptureModes(capabilities),
             onDismiss = { showModeSheet = false },
             onSelected = { next ->
                 if (!isRecording) {
