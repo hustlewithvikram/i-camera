@@ -379,6 +379,19 @@ class CameraController(private val context: Context) {
         }, ContextCompat.getMainExecutor(context))
     }
 
+    fun captureDualPhoto(
+        capture: CameraCapture,
+        onFinished: (android.net.Uri?) -> Unit
+    ) {
+        val primary = imageCapture
+        val secondary = secondaryImageCapture
+        if (primary == null || secondary == null) {
+            onFinished(null)
+            return
+        }
+        capture.captureDualPhoto(primary, secondary, onFinished)
+    }
+
     fun startDualRecording(
         capture: CameraCapture,
         withAudio: Boolean,
