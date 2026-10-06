@@ -158,6 +158,7 @@ fun CameraScreen() {
             lifecycleOwner = lifecycleOwner,
             selector = selector,
             videoMode = mode == CaptureMode.VIDEO,
+            photoMode = if (mode == CaptureMode.PHOTO) photoMode else PhotoMode.PHOTO,
             onReady = { caps ->
                 capabilities = caps
                 zoom = zoom.coerceIn(1f, caps.maxZoomRatio)
@@ -172,7 +173,12 @@ fun CameraScreen() {
         )
     }
 
-    LaunchedEffect(mode, frontCamera) {
+    LaunchedEffect(mode, photoMode, frontCamera) {
+        previewScale = 0.965f
+        previewAlpha = 0.72f
+        kotlinx.coroutines.delay(45)
+        previewScale = 1f
+        previewAlpha = 1f
         if (isRecording) {
             controller.stopRecordingIfNeeded()
             isRecording = false
@@ -191,6 +197,11 @@ fun CameraScreen() {
         AndroidView(
             modifier = Modifier
                 .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = previewScale
+                    scaleY = previewScale
+                    alpha = previewAlpha
+                }
                 .pointerInput(capabilities?.maxZoomRatio) {
                     detectTransformGestures { _, _, zoomChange, _ ->
                         val maxZoom = capabilities?.maxZoomRatio ?: 1f
