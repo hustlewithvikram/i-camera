@@ -319,7 +319,8 @@ fun CameraScreen() {
                     }
                 },
                 onExposureClick = { showExposure = !showExposure },
-                onGridClick = { showGrid = !showGrid }
+                onGridClick = { showGrid = !showGrid },
+                onSettingsClick = { showSettings = !showSettings }
             )
 
             AnimatedVisibility(
@@ -435,7 +436,9 @@ fun CameraScreen() {
                         flashMode = FlashMode.AUTO
                     }
                 }
-            )            CameraModeRail(
+            )
+
+            CameraModeRail(
                 selected = mode,
                 modes = availableCaptureModes(capabilities),
                 onSelected = { next ->
@@ -496,7 +499,8 @@ private fun TopControls(
     showGrid: Boolean,
     onFlashClick: () -> Unit,
     onExposureClick: () -> Unit,
-    onGridClick: () -> Unit
+    onGridClick: () -> Unit,
+    onSettingsClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -578,6 +582,14 @@ private fun TopControls(
                 size = 38.dp
             ) {
                 Icon(Icons.Rounded.Grid3x3, contentDescription = "Grid", tint = Color.White)
+            }
+
+            CameraIconButton(
+                onClick = onSettingsClick,
+                selected = false,
+                size = 38.dp
+            ) {
+                Text("•••", color = Color.White, style = MaterialTheme.typography.labelMedium)
             }
         }
     }
