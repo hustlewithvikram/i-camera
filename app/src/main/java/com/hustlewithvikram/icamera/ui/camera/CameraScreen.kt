@@ -410,7 +410,7 @@ fun CameraScreen() {
                         FlashMode.OFF -> FlashMode.AUTO
                     }
 
-                    if (mode == CaptureMode.VIDEO) {
+                    if (mode.isVideoCaptureMode()) {
                         controller.setTorch(flashMode == FlashMode.ON)
                     } else {
                         controller.imageCapture?.flashMode = flashMode.toImageFlashMode()
@@ -713,8 +713,8 @@ private fun TopControls(
                     ) {
                         Icon(
                             imageVector = when {
-                                mode == CaptureMode.VIDEO && flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
-                                mode == CaptureMode.VIDEO -> Icons.Rounded.FlashOff
+                                mode.isVideoCaptureMode() && flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
+                                mode.isVideoCaptureMode() -> Icons.Rounded.FlashOff
                                 flashMode == FlashMode.AUTO -> Icons.Rounded.FlashAuto
                                 flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
                                 else -> Icons.Rounded.FlashOff
