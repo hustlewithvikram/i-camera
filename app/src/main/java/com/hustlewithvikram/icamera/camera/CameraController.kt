@@ -38,7 +38,11 @@ data class CameraCapabilities(
     val supportsRawJpeg: Boolean,
     val supportsZeroShutterLag: Boolean,
     val supportsConcurrentCamera: Boolean,
-    val macroMinFocusDistance: Float
+    val macroMinFocusDistance: Float,
+    val supportsLowLightBoost: Boolean,
+    val supportsTorchStrength: Boolean,
+    val maxTorchStrengthLevel: Int,
+    val supportsLogicalMultiCamera: Boolean
 )
 
 enum class PhotoMode(val label: String, val extensionMode: Int?) {
@@ -198,7 +202,11 @@ class CameraController(private val context: Context) {
                         supportsRawJpeg = supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW_JPEG),
                         supportsZeroShutterLag = false,
                         supportsConcurrentCamera = cameraProvider.availableConcurrentCameraInfos.isNotEmpty(),
-                        macroMinFocusDistance = macroDistance
+                        macroMinFocusDistance = macroDistance,
+                        supportsLowLightBoost = activeCamera.cameraInfo.isLowLightBoostSupported,
+                        supportsTorchStrength = activeCamera.cameraInfo.isTorchStrengthSupported,
+                        maxTorchStrengthLevel = activeCamera.cameraInfo.maxTorchStrengthLevel,
+                        supportsLogicalMultiCamera = activeCamera.cameraInfo.isLogicalMultiCameraSupported
                     )
                 )
             } catch (t: Throwable) {
@@ -331,6 +339,14 @@ class CameraController(private val context: Context) {
             options.clearCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE)
         }
         camera2Control.setCaptureRequestOptions(options.build())
+    }
+
+    fun setLowLightBoost(enabled: Boolean) {
+        camera?.cameraControl?.enableLowLightBoostAsync(enabled)
+    }
+
+    fun setTorchStrength(level: Int) {
+        camera?.cameraControl?.setTorchStrengthLevel(level)
     }
 
     fun setTorch(enabled: Boolean) {
