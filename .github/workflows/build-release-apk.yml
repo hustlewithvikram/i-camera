@@ -35,13 +35,13 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;35.0.0"
 
       - name: Verify toolchain
         run: |
           java -version
           gradle --version
-          sdkmanager --list_installed | grep -E "platforms;android-36|build-tools;36.0.0"
+          sdkmanager --list_installed | grep -E "platforms;android-36|build-tools;35.0.0"
 
       - name: Build release APK
         run: gradle --no-daemon --stacktrace assembleRelease
