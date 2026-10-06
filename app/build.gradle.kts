@@ -16,6 +16,15 @@ android {
         versionName = "0.2.0"
     }
 
+    signingConfigs {
+        create("stableDebug") {
+            storeFile = rootProject.file("signing/icamera-debug.keystore")
+            storePassword = "icamera-debug-2026"
+            keyAlias = "icamera-debug"
+            keyPassword = "icamera-debug-2026"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -33,6 +42,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("stableDebug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
