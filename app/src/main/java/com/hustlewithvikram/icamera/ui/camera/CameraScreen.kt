@@ -44,6 +44,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -907,7 +908,7 @@ private fun ModePickerSheet(
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(58.dp)
+                                    .size(width = 1.dp, height = 58.dp)
                                     .clip(RoundedCornerShape(18.dp))
                                     .clickable { onSelected(item) },
                                 shape = RoundedCornerShape(18.dp),
