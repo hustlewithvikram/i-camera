@@ -98,6 +98,7 @@ import com.hustlewithvikram.icamera.camera.CameraCapabilities
 import com.hustlewithvikram.icamera.camera.CameraCapture
 import com.hustlewithvikram.icamera.camera.CameraController
 import com.hustlewithvikram.icamera.camera.PhotoMode
+import com.hustlewithvikram.icamera.camera.VideoTransform
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
@@ -191,6 +192,7 @@ fun CameraScreen() {
                 controller.startRecording(
                     capture = capture,
                     withAudio = true,
+                    transform = mode.videoTransform(),
                     onStarted = { isRecording = true },
                     onFinished = { isRecording = false }
                 )
@@ -542,6 +544,7 @@ fun CameraScreen() {
                                 } else controller.startRecording(
                                     capture = capture,
                                     withAudio = true,
+                                    transform = mode.videoTransform(),
                                     onStarted = { isRecording = true },
                                     onFinished = { isRecording = false }
                                 )
@@ -635,6 +638,12 @@ fun CameraScreen() {
             }
         }
     }
+}
+
+private fun CaptureMode.videoTransform(): VideoTransform = when (this) {
+    CaptureMode.SLOW_MOTION -> VideoTransform.SLOW_MOTION
+    CaptureMode.TIMELAPSE -> VideoTransform.TIMELAPSE
+    else -> VideoTransform.NONE
 }
 
 private fun CaptureMode.isVideoCaptureMode(): Boolean = when (this) {
