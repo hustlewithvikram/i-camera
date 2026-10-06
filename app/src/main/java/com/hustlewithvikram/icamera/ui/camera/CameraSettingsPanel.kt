@@ -24,7 +24,12 @@ fun CameraSettingsPanel(
     lowLightBoost: Boolean,
     onLowLightBoostChange: (Boolean) -> Unit,
     torchStrength: Float,
-    onTorchStrengthChange: (Float) -> Unit
+    onTorchStrengthChange: (Float) -> Unit,
+    proMode: Boolean,
+    iso: Float,
+    onIsoChange: (Float) -> Unit,
+    shutter: Float,
+    onShutterChange: (Float) -> Unit
 ) {
     Surface(
         modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp).fillMaxWidth(),
@@ -35,6 +40,19 @@ fun CameraSettingsPanel(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("Camera settings", color = Color.White, style = MaterialTheme.typography.titleMedium)
                 Text("HARDWARE", color = Color(0xFF9E9E9E), style = MaterialTheme.typography.labelSmall)
+            }
+            if (proMode && capabilities != null && capabilities.isoMax > capabilities.isoMin) {
+                Text("PRO", color = Color(0xFFFFC107), style = MaterialTheme.typography.labelSmall)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("ISO", color = Color.White)
+                    Text(iso.toInt().toString(), color = Color.White)
+                }
+                Slider(value = iso, onValueChange = onIsoChange, valueRange = capabilities.isoMin.toFloat()..capabilities.isoMax.toFloat())
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Shutter", color = Color.White)
+                    Text(String.format("%.3fs", shutter), color = Color.White)
+                }
+                Slider(value = shutter, onValueChange = onShutterChange, valueRange = (capabilities.exposureTimeMinNs / 1_000_000_000f)..(capabilities.exposureTimeMaxNs / 1_000_000_000f))
             }
             if (capabilities?.supportsLowLightBoost == true) {
                 Row(modifier = Modifier.fillMaxWidth().clickable { onLowLightBoostChange(!lowLightBoost) }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
