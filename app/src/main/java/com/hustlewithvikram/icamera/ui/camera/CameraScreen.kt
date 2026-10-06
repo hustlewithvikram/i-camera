@@ -367,6 +367,14 @@ fun CameraScreen() {
                 }
             )
 
+            CameraModeRail(
+                selected = mode,
+                modes = availableCaptureModes(capabilities),
+                onSelected = { next ->
+                    if (!isRecording) mode = next
+                }
+            )
+
             BottomControls(
                 mode = mode,
                 canVideo = capabilities?.hasVideo == true,
@@ -627,6 +635,94 @@ private fun ExposureControl(
                 valueRange = min.toFloat()..max.toFloat(),
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+    }
+}
+
+private fun availableCaptureModes(capabilities: CameraCapabilities?): List<CaptureMode> {
+    if (capabilities == null) return listOf(CaptureMode.PHOTO)
+    return buildList {
+        add(CaptureMode.PHOTO)
+        if (capabilities.hasVideo) add(CaptureMode.VIDEO)
+        if (capabilities.supportedPhotoModes.contains(PhotoMode.PORTRAIT)) add(CaptureMode.PORTRAIT)
+        if (capabilities.supportedPhotoModes.contains(PhotoMode.NIGHT)) add(CaptureMode.NIGHT)
+        if (capabilities.supportedPhotoModes.contains(PhotoMode.MACRO)) add(CaptureMode.MACRO)
+        add(CaptureMode.PRO)
+        if (capabilities.supportedPhotoModes.contains(PhotoMode.RAW)) add(CaptureMode.RAW)
+        if (capabilities.supportsConcurrentCamera && capabilities.hasFrontCamera) add(CaptureMode.DUAL)
+    }
+}
+
+@Composable
+private fun CameraModeRail(
+    selected: CaptureMode,
+    modes: List<CaptureMode>,
+    onSelected: (CaptureMode) -> Unit
+) {
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(selected, modes) {
+        val index = modes.indexOf(selected).coerceAtLeast(0)
+        listState.animateScrollToItem(index)
+    }
+
+    LazyRow(
+        state = listState,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp)
+    ) {
+        items(modes, key = { it.name }) { item ->
+            val active = item == selected
+            val scale = remember { Animatable(1f) }
+
+            LaunchedEffect(active) {
+                if (active) {
+                    scale.snapTo(0.82f)
+                    scale.animateTo(
+                        1f,
+                        spring(
+                            dampingRatio = 0.62f,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+                }
+            }
+
+            Surface(
+                modifier = Modifier
+                    .graphicsLayer {
+                        scaleX = scale.value
+                        scaleY = scale.value
+                        alpha = if (active) 1f else 0.72f
+                    }
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable {
+                        scope.launch {
+                            val index = modes.indexOf(item)
+                            listState.animateScrollToItem(index)
+                        }
+                        onSelected(item)
+                    },
+                shape = RoundedCornerShape(20.dp),
+                color = if (active) {
+                    Color(0xE6FFFFFF)
+                } else {
+                    Color(0x55111111)
+                },
+                tonalElevation = if (active) 3.dp else 0.dp,
+                shadowElevation = if (active) 2.dp else 0.dp
+            ) {
+                Text(
+                    text = item.label,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                    color = if (active) Color.Black else Color.White,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
         }
     }
 }
