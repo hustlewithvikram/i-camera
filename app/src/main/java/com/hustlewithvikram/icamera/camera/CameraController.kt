@@ -170,6 +170,13 @@ class CameraController(private val context: Context) {
                     }
                 }
 
+                val macroDistance = runCatching {
+                    androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                        .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+                }.getOrDefault(0f)
+                if (!videoMode && macroDistance > 0f) supportedPhotoModes += PhotoMode.MACRO
+                if (photoMode == PhotoMode.MACRO) setMacro(true, macroDistance) else setMacro(false, 0f)
+
                 onReady(
                     CameraCapabilities(
                         hasFlash = activeCamera.cameraInfo.hasFlashUnit(),
