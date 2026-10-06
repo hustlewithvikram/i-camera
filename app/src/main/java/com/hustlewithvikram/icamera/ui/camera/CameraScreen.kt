@@ -153,6 +153,8 @@ fun CameraScreen() {
     var capabilities by remember { mutableStateOf<CameraCapabilities?>(null) }
     var flashMode by remember { mutableStateOf(FlashMode.AUTO) }
     var zoom by remember { mutableFloatStateOf(1f) }
+    var ultraWide by remember { mutableStateOf(false) }
+    var stablePhotoModes by remember { mutableStateOf<Set<PhotoMode>?>(null) }
     var exposure by remember { mutableIntStateOf(0) }
     var isRecording by remember { mutableStateOf(false) }
     var focusPoint by remember { mutableStateOf<Pair<Float, Float>?>(null) }
@@ -189,10 +191,15 @@ fun CameraScreen() {
             )
             return
         }
-        val selector = if (frontCamera) {
+        val mainSelector = if (frontCamera) {
             CameraSelector.DEFAULT_FRONT_CAMERA
         } else {
             CameraSelector.DEFAULT_BACK_CAMERA
+        }
+        val selector = if (!frontCamera && ultraWide) {
+            controller.getUltraWideSelector() ?: mainSelector
+        } else {
+            mainSelector
         }
 
         error = null
@@ -203,8 +210,15 @@ fun CameraScreen() {
             videoMode = mode == CaptureMode.VIDEO || mode == CaptureMode.DUAL,
             photoMode = mode.photoMode ?: PhotoMode.PHOTO,
             onReady = { caps ->
-                capabilities = caps
-                zoom = zoom.coerceIn(1f, caps.maxZoomRatio)
+                val stableModes = stablePhotoModes ?: caps.supportedPhotoModes.also {
+                    stablePhotoModes = it
+                }
+                capabilities = caps.copy(supportedPhotoModes = stableModes)
+                zoom = if (!frontCamera && ultraWide && caps.supportsUltraWide) {
+                    0.5f
+                } else {
+                    zoom.coerceIn(1f, caps.maxZoomRatio)
+                }
                 exposure = exposure.coerceIn(caps.exposureMin, caps.exposureMax)
                 iso = iso.coerceIn(caps.isoMin.toFloat(), caps.isoMax.toFloat())
                 shutter = shutter.coerceIn(caps.exposureTimeMinNs / 1_000_000_000f, caps.exposureTimeMaxNs / 1_000_000_000f)
@@ -250,10 +264,15 @@ fun CameraScreen() {
                 .pointerInput(capabilities?.maxZoomRatio) {
                     detectTransformGestures { _, _, zoomChange, _ ->
                         val maxZoom = capabilities?.maxZoomRatio ?: 1f
-                        if (maxZoom > 1f) {
-                            val next = (zoom * zoomChange).coerceIn(1f, maxZoom)
+                        val minZoom = if (ultraWide) 0.5f else 1f
+                        if (maxZoom > 1f || ultraWide) {
+                            val next = (zoom * zoomChange).coerceIn(minZoom, maxZoom)
                             zoom = next
-                            controller.setZoom(next)
+                            controller.setZoom(if (ultraWide) {
+                                (next / 0.5f).coerceIn(1f, maxZoom)
+                            } else {
+                                next
+                            })
                         }
                     }
                 },
@@ -376,10 +395,17 @@ fun CameraScreen() {
 
             ZoomControl(
                 maxZoom = capabilities?.maxZoomRatio ?: 1f,
+                supportsUltraWide = capabilities?.supportsUltraWide == true && !frontCamera,
+                ultraWideRatio = capabilities?.ultraWideZoomRatio ?: 0.5f,
                 value = zoom,
-                onValueChange = {
-                    zoom = it
-                    controller.setZoom(it)
+                onValueChange = { ratio ->
+                    if (ratio < 1f) {
+                        ultraWide = true
+                        zoom = 0.5f
+                    } else {
+                        ultraWide = false
+                        zoom = ratio
+                    }
                 }
             )
 
@@ -435,14 +461,20 @@ fun CameraScreen() {
                 onSwitchCamera = {
                     if (!isRecording) {
                         frontCamera = !frontCamera
+                        ultraWide = false
+                        stablePhotoModes = null
                         flashMode = FlashMode.AUTO
                     }
                 }
             )
 
+            val captureModes = remember(capabilities, stablePhotoModes) {
+                availableCaptureModes(capabilities)
+            }
+
             CameraModeRail(
                 selected = mode,
-                modes = availableCaptureModes(capabilities),
+                modes = captureModes,
                 onSelected = { next ->
                     if (!isRecording) mode = next
                 },
@@ -457,7 +489,7 @@ fun CameraScreen() {
         ModePickerSheet(
             visible = showModeSheet,
             selected = mode,
-            modes = availableCaptureModes(capabilities),
+            modes = remember(capabilities, stablePhotoModes) { availableCaptureModes(capabilities) },
             onDismiss = { showModeSheet = false },
             onSelected = { next ->
                 if (!isRecording) {
