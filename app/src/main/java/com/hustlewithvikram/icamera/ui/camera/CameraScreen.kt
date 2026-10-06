@@ -85,6 +85,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.hustlewithvikram.icamera.camera.CameraCapabilities
 import com.hustlewithvikram.icamera.camera.CameraCapture
 import com.hustlewithvikram.icamera.camera.CameraController
+import com.hustlewithvikram.icamera.camera.PhotoMode
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -116,6 +117,9 @@ fun CameraScreen() {
     }
 
     var mode by remember { mutableStateOf(CaptureMode.PHOTO) }
+    var photoMode by remember { mutableStateOf(PhotoMode.PHOTO) }
+    var previewScale by remember { mutableFloatStateOf(1f) }
+    var previewAlpha by remember { mutableFloatStateOf(1f) }
     var frontCamera by remember { mutableStateOf(false) }
     var capabilities by remember { mutableStateOf<CameraCapabilities?>(null) }
     var flashMode by remember { mutableStateOf(FlashMode.AUTO) }
