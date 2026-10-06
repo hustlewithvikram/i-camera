@@ -1,0 +1,54 @@
+name: Ensure Gradle Wrapper
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ensure-wrapper:
+    name: Generate Gradle 8.13 wrapper when missing
+    runs-on: ubuntu-24.04
+    if: github.actor != 'github-actions[bot]'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Generate official Gradle wrapper
+        if: hashFiles('gradle/wrapper/gradle-wrapper.jar') == ''
+        run: |
+          gradle wrapper \
+            --gradle-version 8.13 \
+            --distribution-type bin \
+            --gradle-distribution-sha256-sum 20f1b1176237254a6fc204d8434196fa11a4cfb387567519c61556e8710aed78
+
+      - name: Commit wrapper
+        if: hashFiles('gradle/wrapper/gradle-wrapper.jar') != ''
+        run: |
+          if git diff --quiet -- gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties gradlew gradlew.bat; then
+            echo "Gradle wrapper already present and unchanged."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties gradlew gradlew.bat
+          git commit -m "build: add Gradle 8.13 wrapper"
+          git push
