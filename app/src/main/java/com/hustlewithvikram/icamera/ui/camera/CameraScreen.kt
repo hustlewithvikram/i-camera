@@ -27,8 +27,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -147,6 +149,7 @@ fun CameraScreen() {
     var lastPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var showExposure by remember { mutableStateOf(false) }
     var showGrid by remember { mutableStateOf(false) }
+    var showModeSheet by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     val microphoneLauncher = rememberLauncherForActivityResult(
@@ -387,6 +390,9 @@ fun CameraScreen() {
                 modes = availableCaptureModes(capabilities),
                 onSelected = { next ->
                     if (!isRecording) mode = next
+                },
+                onShowAllModes = {
+                    if (!isRecording) showModeSheet = true
                 }
             )
 
@@ -447,6 +453,19 @@ fun CameraScreen() {
                 }
             )
         }
+
+        ModePickerSheet(
+            visible = showModeSheet,
+            selected = mode,
+            modes = availableCaptureModes(capabilities),
+            onDismiss = { showModeSheet = false },
+            onSelected = { next ->
+                if (!isRecording) {
+                    mode = next
+                    showModeSheet = false
+                }
+            }
+        )
 
         error?.let { message ->
             Surface(
@@ -672,81 +691,247 @@ private fun availableCaptureModes(capabilities: CameraCapabilities?): List<Captu
 private fun CameraModeRail(
     selected: CaptureMode,
     modes: List<CaptureMode>,
-    onSelected: (CaptureMode) -> Unit
+    onSelected: (CaptureMode) -> Unit,
+    onShowAllModes: () -> Unit
 ) {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(selected, modes) {
-        val index = modes.indexOf(selected).coerceAtLeast(0)
-        listState.animateScrollToItem(index)
-    }
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        val sidePadding = ((maxWidth - 92.dp) / 2f).coerceAtLeast(0.dp)
 
-    LaunchedEffect(listState, modes) {
-        androidx.compose.runtime.snapshotFlow {
-            listState.isScrollInProgress to listState.firstVisibleItemIndex
-        }.collect { (scrolling, index) ->
-            if (!scrolling && index in modes.indices && modes[index] != selected) {
-                onSelected(modes[index])
+        LaunchedEffect(selected, modes) {
+            val index = modes.indexOf(selected)
+            if (index >= 0) listState.animateScrollToItem(index)
+        }
+
+        LaunchedEffect(listState, modes) {
+            androidx.compose.runtime.snapshotFlow {
+                val visible = listState.layoutInfo.visibleItemsInfo
+                val center = (listState.layoutInfo.viewportStartOffset +
+                    listState.layoutInfo.viewportEndOffset) / 2
+                listState.isScrollInProgress to visible.map {
+                    it.index to (it.offset + it.size / 2)
+                }
+            }.collect { (scrolling, centers) ->
+                if (!scrolling && centers.isNotEmpty()) {
+                    val center = (listState.layoutInfo.viewportStartOffset +
+                        listState.layoutInfo.viewportEndOffset) / 2
+                    val nearest = centers.minByOrNull {
+                        kotlin.math.abs(it.second - center)
+                    }?.first
+                    if (nearest != null && nearest in modes.indices &&
+                        modes[nearest] != selected
+                    ) {
+                        onSelected(modes[nearest])
+                    }
+                }
+            }
+        }
+
+        LazyRow(
+            state = listState,
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = sidePadding)
+        ) {
+            items(modes, key = { it.name }) { item ->
+                val active = item == selected
+                val scale = remember { Animatable(1f) }
+                var verticalDrag by remember { mutableFloatStateOf(0f) }
+
+                LaunchedEffect(active) {
+                    if (active) {
+                        scale.snapTo(0.82f)
+                        scale.animateTo(
+                            1f,
+                            spring(
+                                dampingRatio = 0.62f,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        )
+                    } else {
+                        scale.animateTo(
+                            0.82f,
+                            spring(
+                                dampingRatio = 0.82f,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(width = 92.dp, height = 42.dp)
+                        .graphicsLayer {
+                            scaleX = scale.value
+                            scaleY = scale.value
+                            alpha = if (active) 1f else 0.46f
+                        }
+                        .pointerInput(active, item) {
+                            detectVerticalDragGestures(
+                                onVerticalDrag = { _, dragAmount ->
+                                    if (active) verticalDrag += dragAmount
+                                },
+                                onDragEnd = {
+                                    if (active && verticalDrag < -42f) onShowAllModes()
+                                    verticalDrag = 0f
+                                },
+                                onDragCancel = { verticalDrag = 0f }
+                            )
+                        }
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable {
+                            if (!active) {
+                                scope.launch {
+                                    val index = modes.indexOf(item)
+                                    if (index >= 0) listState.animateScrollToItem(index)
+                                }
+                            }
+                            onSelected(item)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (active) Color(0xE6FFFFFF) else Color(0x33111111),
+                        tonalElevation = if (active) 3.dp else 0.dp,
+                        shadowElevation = if (active) 2.dp else 0.dp
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = item.label,
+                                color = if (active) Color.Black else Color.White,
+                                style = if (active) {
+                                    MaterialTheme.typography.labelLarge
+                                } else {
+                                    MaterialTheme.typography.labelMedium
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
+}
 
-    LazyRow(
-        state = listState,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp)
+@Composable
+private fun ModePickerSheet(
+    visible: Boolean,
+    selected: CaptureMode,
+    modes: List<CaptureMode>,
+    onDismiss: () -> Unit,
+    onSelected: (CaptureMode) -> Unit
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + slideInVertically(
+            initialOffsetY = { it },
+            animationSpec = spring(
+                dampingRatio = 0.82f,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        ),
+        exit = fadeOut() + slideOutVertically(
+            targetOffsetY = { it },
+            animationSpec = spring(
+                dampingRatio = 0.9f,
+                stiffness = Spring.StiffnessMedium
+            )
+        ),
+        modifier = Modifier.fillMaxSize()
     ) {
-        items(modes, key = { it.name }) { item ->
-            val active = item == selected
-            val scale = remember { Animatable(1f) }
-
-            LaunchedEffect(active) {
-                if (active) {
-                    scale.snapTo(0.82f)
-                    scale.animateTo(
-                        1f,
-                        spring(
-                            dampingRatio = 0.62f,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    )
-                }
-            }
-
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x66000000))
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.BottomCenter
+        ) {
             Surface(
                 modifier = Modifier
-                    .graphicsLayer {
-                        scaleX = scale.value
-                        scaleY = scale.value
-                        alpha = if (active) 1f else 0.72f
-                    }
-                    .clip(RoundedCornerShape(20.dp))
-                    .clickable {
-                        scope.launch {
-                            val index = modes.indexOf(item)
-                            listState.animateScrollToItem(index)
-                        }
-                        onSelected(item)
-                    },
-                shape = RoundedCornerShape(20.dp),
-                color = if (active) {
-                    Color(0xE6FFFFFF)
-                } else {
-                    Color(0x55111111)
-                },
-                tonalElevation = if (active) 3.dp else 0.dp,
-                shadowElevation = if (active) 2.dp else 0.dp
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .clickable(enabled = false) {},
+                shape = RoundedCornerShape(
+                    topStart = 30.dp,
+                    topEnd = 30.dp,
+                    bottomStart = 26.dp,
+                    bottomEnd = 26.dp
+                ),
+                color = Color(0xD91A1A1A),
+                tonalElevation = 8.dp,
+                shadowElevation = 16.dp
             ) {
-                Text(
-                    text = item.label,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                    color = if (active) Color.Black else Color.White,
-                    style = MaterialTheme.typography.labelLarge
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 18.dp)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .size(width = 38.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.White.copy(alpha = 0.28f))
+                    )
+
+                    Spacer(Modifier.size(12.dp))
+
+                    Text(
+                        text = "Camera modes",
+                        color = Color.White.copy(alpha = 0.72f),
+                        style = MaterialTheme.typography.labelMedium
+                    )
+
+                    Spacer(Modifier.size(14.dp))
+
+                    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(4),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        userScrollEnabled = false
+                    ) {
+                        items(modes.size) { index ->
+                            val item = modes[index]
+                            val active = item == selected
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(58.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .clickable { onSelected(item) },
+                                shape = RoundedCornerShape(18.dp),
+                                color = if (active) Color(0xE6FFFFFF) else Color(0x33111111),
+                                border = if (active) {
+                                    androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        Color.White.copy(alpha = 0.72f)
+                                    )
+                                } else null
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = item.label,
+                                        color = if (active) Color.Black else Color.White,
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.size(6.dp))
+                }
             }
         }
     }
