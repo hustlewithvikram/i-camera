@@ -135,6 +135,8 @@ fun CameraScreen() {
     var showSettings by remember { mutableStateOf(false) }
     var lowLightBoost by remember { mutableStateOf(false) }
     var torchStrength by remember { mutableFloatStateOf(1f) }
+    var iso by remember { mutableFloatStateOf(100f) }
+    var shutter by remember { mutableFloatStateOf(0.01f) }
     var frontCamera by remember { mutableStateOf(false) }
     var capabilities by remember { mutableStateOf<CameraCapabilities?>(null) }
     var flashMode by remember { mutableStateOf(FlashMode.AUTO) }
@@ -191,6 +193,8 @@ fun CameraScreen() {
                 capabilities = caps
                 zoom = zoom.coerceIn(1f, caps.maxZoomRatio)
                 exposure = exposure.coerceIn(caps.exposureMin, caps.exposureMax)
+                iso = iso.coerceIn(caps.isoMin.toFloat(), caps.isoMax.toFloat())
+                shutter = shutter.coerceIn(caps.exposureTimeMinNs / 1_000_000_000f, caps.exposureTimeMaxNs / 1_000_000_000f)
                 if (!caps.hasFlash) {
                     flashMode = FlashMode.OFF
                 }
@@ -336,6 +340,17 @@ fun CameraScreen() {
                     onTorchStrengthChange = {
                         torchStrength = it
                         controller.setTorchStrength(it.toInt().coerceAtLeast(1))
+                    },
+                    proMode = mode == CaptureMode.PRO,
+                    iso = iso,
+                    onIsoChange = {
+                        iso = it
+                        controller.setManualExposure(iso.toInt(), (shutter * 1_000_000_000L).toLong())
+                    },
+                    shutter = shutter,
+                    onShutterChange = {
+                        shutter = it
+                        controller.setManualExposure(iso.toInt(), (shutter * 1_000_000_000L).toLong())
                     }
                 )
             }
