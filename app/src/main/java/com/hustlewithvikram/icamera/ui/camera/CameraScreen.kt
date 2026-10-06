@@ -860,7 +860,7 @@ private fun ModePickerSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 8.dp)
-                    .clickable(enabled = false) {},
+                    .clickable { },
                 shape = RoundedCornerShape(
                     topStart = 30.dp,
                     topEnd = 30.dp,
