@@ -8,11 +8,12 @@ import android.graphics.Matrix
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaMuxer
+import android.net.Uri
 import android.os.Build
-import android.provider.MediaStore
 import android.provider.MediaStore
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.toBitmap
 import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
@@ -298,7 +299,7 @@ class CameraCapture(private val context: Context) {
                             uri != Uri.EMPTY
                         ) {
                             transformVideo(uri, transform) {
-                                onFinished()
+                                ContextCompat.getMainExecutor(context).execute(onFinished)
                             }
                         } else {
                             onFinished()
@@ -402,12 +403,12 @@ class CameraCapture(private val context: Context) {
                 }
 
                 context.contentResolver.delete(sourceUri, null, null)
-                onFinished()
+                ContextCompat.getMainExecutor(context).execute(onFinished)
             } catch (_: Throwable) {
                 runCatching { muxer?.stop() }
                 runCatching { muxer?.release() }
                 destinationUri?.let { context.contentResolver.delete(it, null, null) }
-                onFinished()
+                ContextCompat.getMainExecutor(context).execute(onFinished)
             } finally {
                 runCatching { extractor?.release() }
                 runCatching { sourcePfd?.close() }
