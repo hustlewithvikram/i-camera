@@ -45,6 +45,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,6 +82,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -108,6 +111,9 @@ private enum class CaptureMode(
     MACRO("MACRO", PhotoMode.MACRO),
     PRO("PRO"),
     RAW("RAW", PhotoMode.RAW),
+    HDR("HDR", PhotoMode.HDR),
+    RETOUCH("RETOUCH", PhotoMode.RETOUCH),
+    AUTO("AUTO", PhotoMode.AUTO),
     DUAL("DUAL", null)
 }
 
@@ -682,8 +688,13 @@ private fun availableCaptureModes(capabilities: CameraCapabilities?): List<Captu
         if (capabilities.supportedPhotoModes.contains(PhotoMode.PORTRAIT)) add(CaptureMode.PORTRAIT)
         if (capabilities.supportedPhotoModes.contains(PhotoMode.NIGHT)) add(CaptureMode.NIGHT)
         if (capabilities.supportedPhotoModes.contains(PhotoMode.MACRO)) add(CaptureMode.MACRO)
-        add(CaptureMode.PRO)
+        if (capabilities.isoMax > capabilities.isoMin &&
+            capabilities.exposureTimeMaxNs > capabilities.exposureTimeMinNs
+        ) add(CaptureMode.PRO)
         if (capabilities.supportedPhotoModes.contains(PhotoMode.RAW)) add(CaptureMode.RAW)
+        if (capabilities.supportedPhotoModes.contains(PhotoMode.HDR)) add(CaptureMode.HDR)
+        if (capabilities.supportedPhotoModes.contains(PhotoMode.RETOUCH)) add(CaptureMode.RETOUCH)
+        if (capabilities.supportedPhotoModes.contains(PhotoMode.AUTO)) add(CaptureMode.AUTO)
         if (capabilities.supportsConcurrentCamera && capabilities.hasFrontCamera) add(CaptureMode.DUAL)
     }
 }
@@ -697,6 +708,11 @@ private fun CameraModeRail(
 ) {
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val flingBehavior = rememberSnapFlingBehavior(
+        lazyListState = listState,
+        snapPosition = SnapPosition.Center
+    )
 
     BoxWithConstraints(
         modifier = Modifier
@@ -707,7 +723,12 @@ private fun CameraModeRail(
 
         LaunchedEffect(selected, modes) {
             val index = modes.indexOf(selected)
-            if (index >= 0) listState.animateScrollToItem(index)
+            if (index >= 0) {
+                val centerOffsetPx = with(density) {
+                    ((maxWidth.toPx() - 92.dp.toPx()) / 2f).roundToInt()
+                }
+                listState.animateScrollToItem(index, scrollOffset = -centerOffsetPx)
+            }
         }
 
         LaunchedEffect(listState, modes) {
@@ -738,6 +759,7 @@ private fun CameraModeRail(
             state = listState,
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
+            flingBehavior = flingBehavior,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = sidePadding)
         ) {
             items(modes, key = { it.name }) { item ->
@@ -791,7 +813,12 @@ private fun CameraModeRail(
                             if (!active) {
                                 scope.launch {
                                     val index = modes.indexOf(item)
-                                    if (index >= 0) listState.animateScrollToItem(index)
+                                    if (index >= 0) {
+                                        val centerOffsetPx = with(density) {
+                                            ((maxWidth.toPx() - 92.dp.toPx()) / 2f).roundToInt()
+                                        }
+                                        listState.animateScrollToItem(index, scrollOffset = -centerOffsetPx)
+                                    }
                                 }
                             }
                             onSelected(item)
