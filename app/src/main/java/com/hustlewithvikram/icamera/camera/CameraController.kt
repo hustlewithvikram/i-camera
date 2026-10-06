@@ -405,6 +405,7 @@ class CameraController(private val context: Context) {
     fun startRecording(
         capture: CameraCapture,
         withAudio: Boolean,
+        transform: VideoTransform = VideoTransform.NONE,
         onStarted: () -> Unit,
         onFinished: () -> Unit
     ) {
@@ -412,6 +413,7 @@ class CameraController(private val context: Context) {
         recording = capture.startVideo(
             videoCapture = video,
             withAudio = withAudio,
+            transform = transform,
             onStarted = onStarted,
             onFinished = {
                 recording = null
