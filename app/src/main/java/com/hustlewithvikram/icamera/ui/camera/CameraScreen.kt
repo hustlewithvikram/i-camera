@@ -1163,6 +1163,22 @@ private fun CameraModeRail(
                             }
                         )
                         .clip(RoundedCornerShape(19.dp))
+                        .then(
+                            if (active) {
+                                Modifier
+                                    .background(
+                                        Color(0x661F1F1F),
+                                        RoundedCornerShape(19.dp)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        Color.White.copy(alpha = 0.08f),
+                                        RoundedCornerShape(19.dp)
+                                    )
+                            } else {
+                                Modifier
+                            }
+                        )
                         .clickable {
                             if (active) {
                                 onShowAllModes()
@@ -1184,18 +1200,6 @@ private fun CameraModeRail(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    if (active) {
-                        Surface(
-                            modifier = Modifier.fillMaxSize(),
-                            shape = RoundedCornerShape(19.dp),
-                            color = Color(0x661F1F1F),
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                Color.White.copy(alpha = 0.08f)
-                            )
-                        ) {}
-                    }
-
                     Text(
                         text = item.label,
                         maxLines = 1,
