@@ -70,4 +70,5 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
     implementation("androidx.camera:camera-video:$cameraxVersion")
+    implementation("androidx.camera:camera-extensions:$cameraxVersion")
 }
