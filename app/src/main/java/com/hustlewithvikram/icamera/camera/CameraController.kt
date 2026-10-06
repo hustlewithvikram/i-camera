@@ -96,6 +96,7 @@ class CameraController(private val context: Context) {
                     ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                         .setFlashMode(ImageCapture.FLASH_MODE_AUTO)
+                        .setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
                         .build()
                 } else {
                     null
