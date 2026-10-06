@@ -26,6 +26,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -735,6 +736,10 @@ private fun CameraModeRail(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+
+    // This flag is set before a programmatic selection changes the parent state.
+    // That prevents the settled-scroll observer from immediately selecting the
+    // mode that happened to be under the center while our own animation is running.
     var programmaticScroll by remember { mutableStateOf(false) }
 
     val flingBehavior = rememberSnapFlingBehavior(
@@ -750,53 +755,78 @@ private fun CameraModeRail(
         val itemWidth = 74.dp
         val sidePadding = ((maxWidth - itemWidth) / 2f).coerceAtLeast(0.dp)
 
+        fun centeredIndex(): Int? {
+            val visible = listState.layoutInfo.visibleItemsInfo
+            if (visible.isEmpty()) return null
+
+            val viewportCenter = (
+                listState.layoutInfo.viewportStartOffset +
+                    listState.layoutInfo.viewportEndOffset
+                ) / 2f
+
+            return visible.minByOrNull { item ->
+                abs((item.offset + item.size / 2f) - viewportCenter)
+            }?.index
+        }
+
         suspend fun centerMode(index: Int) {
             if (index !in modes.indices) return
-            val centerOffsetPx = with(density) {
-                ((maxWidth.toPx() - itemWidth.toPx()) / 2f).roundToInt()
-            }
-            // LazyList scrollOffset is the distance from the viewport start to the
-            // item's start. Positive is required to place the item in the center.
-            programmaticScroll = true
-            try {
-                listState.animateScrollToItem(
-                    index = index,
-                    scrollOffset = centerOffsetPx
-                )
-            } finally {
-                programmaticScroll = false
+
+            // First make the target item visible. Then measure its real position
+            // and animate by the exact delta required to put it at viewport center.
+            listState.animateScrollToItem(index)
+
+            val item = listState.layoutInfo.visibleItemsInfo
+                .firstOrNull { it.index == index }
+                ?: return
+
+            val viewportCenter = (
+                listState.layoutInfo.viewportStartOffset +
+                    listState.layoutInfo.viewportEndOffset
+                ) / 2f
+            val itemCenter = item.offset + item.size / 2f
+            val correction = itemCenter - viewportCenter
+
+            if (abs(correction) > 0.5f) {
+                listState.animateScrollBy(correction)
             }
         }
 
-        LaunchedEffect(modes) {
+        // Initial layout and capability changes must place the externally selected
+        // mode in the center. If the mode is already centered, do nothing.
+        LaunchedEffect(modes, selected) {
+            if (programmaticScroll) return@LaunchedEffect
+
             val index = modes.indexOf(selected)
-            if (index >= 0) centerMode(index)
+            if (index < 0) return@LaunchedEffect
+
+            if (centeredIndex() != index) {
+                programmaticScroll = true
+                try {
+                    centerMode(index)
+                } finally {
+                    programmaticScroll = false
+                }
+            }
         }
 
+        // A mode changes because of a horizontal user gesture only after the rail
+        // has completely settled. Never infer selection during an in-flight scroll.
         LaunchedEffect(listState, modes) {
             androidx.compose.runtime.snapshotFlow {
-                val visible = listState.layoutInfo.visibleItemsInfo
-                val center = (listState.layoutInfo.viewportStartOffset +
-                    listState.layoutInfo.viewportEndOffset) / 2
-                listState.isScrollInProgress to visible.map {
-                    it.index to (it.offset + it.size / 2)
+                if (listState.isScrollInProgress) {
+                    null
+                } else {
+                    centeredIndex()
                 }
-            }.collect { (scrolling, centers) ->
-                // Never let our own centering animation change the selected mode.
-                // Only a real user scroll is allowed to update the mode.
-                if (!scrolling && !programmaticScroll && centers.isNotEmpty()) {
-                    val center = (listState.layoutInfo.viewportStartOffset +
-                        listState.layoutInfo.viewportEndOffset) / 2
-                    val nearest = centers.minByOrNull {
-                        kotlin.math.abs(it.second - center)
-                    }?.first
-
-                    if (nearest != null &&
-                        nearest in modes.indices &&
-                        modes[nearest] != selected
-                    ) {
-                        onSelected(modes[nearest])
-                    }
+            }.collect { index ->
+                if (
+                    index != null &&
+                    index in modes.indices &&
+                    !programmaticScroll &&
+                    modes[index] != selected
+                ) {
+                    onSelected(modes[index])
                 }
             }
         }
@@ -819,14 +849,17 @@ private fun CameraModeRail(
                     derivedStateOf {
                         val info = listState.layoutInfo.visibleItemsInfo
                             .firstOrNull { it.index == itemIndex }
-                        val center = (
+                        val viewportCenter = (
                             listState.layoutInfo.viewportStartOffset +
                                 listState.layoutInfo.viewportEndOffset
                             ) / 2f
-                        val itemCenter = info?.let { it.offset + it.size / 2f } ?: center
+                        val itemCenter = info?.let {
+                            it.offset + it.size / 2f
+                        } ?: viewportCenter
+
                         (
                             1f - (
-                                kotlin.math.abs(itemCenter - center) /
+                                abs(itemCenter - viewportCenter) /
                                     with(density) { itemWidth.toPx() * 2.5f }
                                 )
                             ).coerceIn(0f, 1f)
@@ -842,25 +875,49 @@ private fun CameraModeRail(
                             scaleY = 0.84f + p * 0.16f
                             alpha = 0.28f + p * 0.72f
                         }
-                        .pointerInput(active, item) {
-                            detectVerticalDragGestures(
-                                onVerticalDrag = { _, dragAmount ->
-                                    if (active) verticalDrag += dragAmount
-                                },
-                                onDragEnd = {
-                                    if (active && verticalDrag < -36f) onShowAllModes()
-                                    verticalDrag = 0f
-                                },
-                                onDragCancel = { verticalDrag = 0f }
-                            )
-                        }
+                        // Only the active item listens for the upward mode-picker
+                        // gesture. Inactive items leave all horizontal touch handling
+                        // to LazyRow, so swiping the rail cannot be stolen by them.
+                        .then(
+                            if (active) {
+                                Modifier.pointerInput(item) {
+                                    detectVerticalDragGestures(
+                                        onVerticalDrag = { _, dragAmount ->
+                                            verticalDrag += dragAmount
+                                        },
+                                        onDragEnd = {
+                                            if (verticalDrag < -36f) {
+                                                onShowAllModes()
+                                            }
+                                            verticalDrag = 0f
+                                        },
+                                        onDragCancel = {
+                                            verticalDrag = 0f
+                                        }
+                                    )
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
                         .clip(RoundedCornerShape(19.dp))
                         .clickable {
-                            if (!active) {
-                                scope.launch { centerMode(itemIndex) }
-                                onSelected(item)
-                            } else {
+                            if (active) {
                                 onShowAllModes()
+                            } else {
+                                // Mark this as programmatic BEFORE changing the parent
+                                // selection. This closes the race that caused taps to
+                                // jump back to the previous/under-center mode.
+                                programmaticScroll = true
+                                onSelected(item)
+
+                                scope.launch {
+                                    try {
+                                        centerMode(itemIndex)
+                                    } finally {
+                                        programmaticScroll = false
+                                    }
+                                }
                             }
                         },
                     contentAlignment = Alignment.Center
