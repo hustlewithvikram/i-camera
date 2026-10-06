@@ -120,10 +120,7 @@ class CameraController(private val context: Context) {
                     if (supported.isEmpty()) {
                         null
                     } else {
-                        val selectorQuality = QualitySelector.from(
-                            Quality.FHD,
-                            FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
-                        )
+                        val selectorQuality = QualitySelector.from(Quality.HIGHEST)
                         val recorder = Recorder.Builder()
                             .setQualitySelector(selectorQuality)
                             .build()
