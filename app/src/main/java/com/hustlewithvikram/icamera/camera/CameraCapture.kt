@@ -2,7 +2,11 @@ package com.hustlewithvikram.icamera.camera
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Matrix
 import android.os.Build
+import android.provider.MediaStore
 import android.provider.MediaStore
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -94,6 +98,155 @@ class CameraCapture(private val context: Context) {
                 }
             }
         )
+    }
+
+
+    fun captureDualPhoto(
+        primary: ImageCapture,
+        secondary: ImageCapture,
+        onFinished: (Uri?) -> Unit
+    ) {
+        var first: Uri? = null
+        var second: Uri? = null
+        var completed = 0
+
+        fun finish(uri: Uri?) {
+            if (uri != null && first == null) first = uri else if (uri != null && second == null) second = uri
+            completed++
+            if (completed == 2) onFinished(first ?: second)
+        }
+
+        capture(primary) { uri -> finish(uri) }
+        capture(secondary) { uri -> finish(uri) }
+    }
+
+    fun capturePanorama(
+        imageCapture: ImageCapture,
+        onResult: (Uri?) -> Unit
+    ) {
+        val frames = mutableListOf<Bitmap>()
+        val frameCount = 6
+
+        fun captureNext(index: Int) {
+            if (index >= frameCount) {
+                val first = frames.firstOrNull()
+                if (first == null) {
+                    onResult(null)
+                    return
+                }
+
+                val stripWidth = (first.width * 0.42f).toInt().coerceAtLeast(1)
+                val outputWidth = stripWidth * frameCount
+                val stitched = Bitmap.createBitmap(
+                    outputWidth,
+                    first.height,
+                    Bitmap.Config.ARGB_8888
+                )
+                val canvas = Canvas(stitched)
+
+                frames.forEachIndexed { frameIndex, bitmap ->
+                    val sourceLeft = ((bitmap.width - stripWidth) / 2).coerceAtLeast(0)
+                    val source = android.graphics.Rect(
+                        sourceLeft,
+                        0,
+                        (sourceLeft + stripWidth).coerceAtMost(bitmap.width),
+                        bitmap.height
+                    )
+                    val destination = android.graphics.Rect(
+                        frameIndex * stripWidth,
+                        0,
+                        (frameIndex + 1) * stripWidth,
+                        first.height
+                    )
+                    canvas.drawBitmap(bitmap, source, destination, null)
+                    if (bitmap !== first) bitmap.recycle()
+                }
+                first.recycle()
+
+                val values = ContentValues().apply {
+                    put(MediaStore.Images.Media.DISPLAY_NAME, "iCamera_Panorama_" + System.currentTimeMillis() + ".jpg")
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/iCamera")
+                    }
+                }
+                val uri = context.contentResolver.insert(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    values
+                )
+                if (uri == null) {
+                    stitched.recycle()
+                    onResult(null)
+                    return
+                }
+
+                val saved = runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { stream ->
+                        stitched.compress(Bitmap.CompressFormat.JPEG, 92, stream)
+                    } == true
+                }.getOrDefault(false)
+                stitched.recycle()
+
+                if (saved) {
+                    onResult(uri)
+                } else {
+                    context.contentResolver.delete(uri, null, null)
+                    onResult(null)
+                }
+                return
+            }
+
+            imageCapture.takePicture(
+                ContextCompat.getMainExecutor(context),
+                object : ImageCapture.OnImageCapturedCallback() {
+                    override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
+                        val bitmap = runCatching {
+                            var result = image.toBitmap()
+                            val rotation = image.imageInfo.rotationDegrees
+                            if (rotation != 0) {
+                                val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                                result = Bitmap.createBitmap(
+                                    result,
+                                    0,
+                                    0,
+                                    result.width,
+                                    result.height,
+                                    matrix,
+                                    true
+                                )
+                            }
+                            result
+                        }.getOrNull()
+                        image.close()
+
+                        if (bitmap == null) {
+                            frames.forEach { it.recycle() }
+                            frames.clear()
+                            onResult(null)
+                            return
+                        }
+
+                        frames += bitmap
+                        if (index + 1 < frameCount) {
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                                { captureNext(index + 1) },
+                                220L
+                            )
+                        } else {
+                            captureNext(index + 1)
+                        }
+                    }
+
+                    override fun onError(exception: ImageCaptureException) {
+                        frames.forEach { it.recycle() }
+                        frames.clear()
+                        onResult(null)
+                    }
+                }
+            )
+        }
+
+        captureNext(0)
     }
 
     fun startVideo(
