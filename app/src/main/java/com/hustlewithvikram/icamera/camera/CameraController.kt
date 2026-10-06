@@ -214,7 +214,10 @@ class CameraController(private val context: Context) {
                         supportsRaw = supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW),
                         supportsRawJpeg = supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW_JPEG),
                         supportsZeroShutterLag = false,
-                        supportsConcurrentCamera = cameraProvider.availableConcurrentCameraInfos.isNotEmpty(),
+                        supportsConcurrentCamera = cameraProvider.availableConcurrentCameraInfos.any { infos ->
+                            infos.any { it.lensFacing == CameraSelector.LENS_FACING_BACK } &&
+                                infos.any { it.lensFacing == CameraSelector.LENS_FACING_FRONT }
+                        },
                         macroMinFocusDistance = macroDistance,
                         supportsLowLightBoost = activeCamera.cameraInfo.isLowLightBoostSupported,
                         supportsTorchStrength = activeCamera.cameraInfo.isTorchStrengthSupported,
