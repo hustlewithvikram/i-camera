@@ -5,6 +5,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.media.MediaMuxer
 import android.os.Build
 import android.provider.MediaStore
 import android.provider.MediaStore
@@ -17,6 +20,12 @@ import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import androidx.core.util.Consumer
+
+enum class VideoTransform {
+    NONE,
+    SLOW_MOTION,
+    TIMELAPSE
+}
 
 class CameraCapture(private val context: Context) {
     fun capture(
@@ -252,6 +261,7 @@ class CameraCapture(private val context: Context) {
     fun startVideo(
         videoCapture: VideoCapture<Recorder>,
         withAudio: Boolean,
+        transform: VideoTransform = VideoTransform.NONE,
         onStarted: () -> Unit,
         onFinished: () -> Unit
     ): Recording {
@@ -281,9 +291,129 @@ class CameraCapture(private val context: Context) {
             Consumer<VideoRecordEvent> { event ->
                 when (event) {
                     is VideoRecordEvent.Start -> onStarted()
-                    is VideoRecordEvent.Finalize -> onFinished()
+                    is VideoRecordEvent.Finalize -> {
+                        val uri = event.outputResults.outputUri
+                        if (event.error == VideoRecordEvent.Finalize.ERROR_NONE &&
+                            transform != VideoTransform.NONE &&
+                            uri != Uri.EMPTY
+                        ) {
+                            transformVideo(uri, transform) {
+                                onFinished()
+                            }
+                        } else {
+                            onFinished()
+                        }
+                    }
                 }
             }
         )
     }
+
+    private fun transformVideo(
+        sourceUri: Uri,
+        transform: VideoTransform,
+        onFinished: () -> Unit
+    ) {
+        Thread {
+            var destinationUri: Uri? = null
+            var sourcePfd: android.os.ParcelFileDescriptor? = null
+            var destinationPfd: android.os.ParcelFileDescriptor? = null
+            var extractor: MediaExtractor? = null
+            var muxer: MediaMuxer? = null
+            try {
+                extractor = MediaExtractor()
+                extractor.setDataSource(context, sourceUri, null)
+                val videoTrack = (0 until extractor.trackCount).firstOrNull { index ->
+                    extractor.getTrackFormat(index)
+                        .getString(android.media.MediaFormat.KEY_MIME)
+                        ?.startsWith("video/") == true
+                } ?: throw IllegalStateException("Recorded video track is missing.")
+
+                val values = ContentValues().apply {
+                    put(MediaStore.Video.Media.DISPLAY_NAME, "iCamera_" + transform.name.lowercase() + "_" + System.currentTimeMillis() + ".mp4")
+                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/iCamera")
+                        put(MediaStore.Video.Media.IS_PENDING, 1)
+                    }
+                }
+                destinationUri = context.contentResolver.insert(
+                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                    values
+                ) ?: throw IllegalStateException("Unable to create processed video.")
+
+                sourcePfd = context.contentResolver.openFileDescriptor(sourceUri, "r")
+                    ?: throw IllegalStateException("Unable to read recorded video.")
+                destinationPfd = context.contentResolver.openFileDescriptor(destinationUri, "w")
+                    ?: throw IllegalStateException("Unable to open processed video.")
+
+                muxer = MediaMuxer(
+                    destinationPfd!!.fileDescriptor,
+                    MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
+                )
+                val outputTrack = muxer.addTrack(extractor.getTrackFormat(videoTrack))
+                muxer.start()
+                extractor.selectTrack(videoTrack)
+
+                val bufferSize = 4 * 1024 * 1024
+                val buffer = java.nio.ByteBuffer.allocate(bufferSize)
+                val info = MediaCodec.BufferInfo()
+                var frameIndex = 0
+                var lastPts = -1L
+
+                while (true) {
+                    val size = extractor.readSampleData(buffer, 0)
+                    if (size < 0) break
+
+                    val originalPts = extractor.sampleTime
+                    if (originalPts >= 0L) {
+                        val keep = when (transform) {
+                            VideoTransform.SLOW_MOTION -> true
+                            VideoTransform.TIMELAPSE -> frameIndex++ % 6 == 0
+                            VideoTransform.NONE -> true
+                        }
+                        if (keep) {
+                            val transformedPts = when (transform) {
+                                VideoTransform.SLOW_MOTION -> originalPts * 2L
+                                VideoTransform.TIMELAPSE -> originalPts / 6L
+                                VideoTransform.NONE -> originalPts
+                            }
+                            info.offset = 0
+                            info.size = size
+                            info.flags = extractor.sampleFlags
+                            info.presentationTimeUs = transformedPts.coerceAtLeast(lastPts + 1L)
+                            muxer.writeSampleData(outputTrack, buffer, info)
+                            lastPts = info.presentationTimeUs
+                        }
+                    }
+                    buffer.clear()
+                    extractor.advance()
+                }
+
+                muxer.stop()
+                muxer.release()
+                muxer = null
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val ready = ContentValues().apply {
+                        put(MediaStore.Video.Media.IS_PENDING, 0)
+                    }
+                    context.contentResolver.update(destinationUri, ready, null, null)
+                }
+
+                context.contentResolver.delete(sourceUri, null, null)
+                onFinished()
+            } catch (_: Throwable) {
+                runCatching { muxer?.stop() }
+                runCatching { muxer?.release() }
+                destinationUri?.let { context.contentResolver.delete(it, null, null) }
+                onFinished()
+            } finally {
+                runCatching { extractor?.release() }
+                runCatching { sourcePfd?.close() }
+                runCatching { destinationPfd?.close() }
+            }
+        }.start()
+    }
+
 }
