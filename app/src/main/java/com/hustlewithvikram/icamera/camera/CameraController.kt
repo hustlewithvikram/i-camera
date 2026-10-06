@@ -93,11 +93,16 @@ class CameraController(private val context: Context) {
                 val useCases = mutableListOf<androidx.camera.core.UseCase>(preview)
 
                 val image = if (!videoMode) {
-                    ImageCapture.Builder()
+                    val builder = ImageCapture.Builder()
                         .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
                         .setFlashMode(ImageCapture.FLASH_MODE_AUTO)
-                        .setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
-                        .build()
+                    val formats = runCatching {
+                        ImageCapture.getImageCaptureCapabilities(cameraProvider.getCameraInfo(selector)).supportedOutputFormats
+                    }.getOrDefault(emptySet())
+                    if (formats.contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)) {
+                        builder.setOutputFormat(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR)
+                    }
+                    builder.build()
                 } else {
                     null
                 }
