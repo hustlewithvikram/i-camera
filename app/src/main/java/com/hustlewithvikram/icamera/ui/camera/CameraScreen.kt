@@ -73,6 +73,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -741,6 +742,8 @@ private fun CameraModeRail(
     // That prevents the settled-scroll observer from immediately selecting the
     // mode that happened to be under the center while our own animation is running.
     var programmaticScroll by remember { mutableStateOf(false) }
+    val latestSelected = rememberUpdatedState(selected)
+    val latestOnSelected = rememberUpdatedState(onSelected)
 
     val flingBehavior = rememberSnapFlingBehavior(
         lazyListState = listState,
@@ -824,9 +827,9 @@ private fun CameraModeRail(
                     index != null &&
                     index in modes.indices &&
                     !programmaticScroll &&
-                    modes[index] != selected
+                    modes[index] != latestSelected.value
                 ) {
-                    onSelected(modes[index])
+                    latestOnSelected.value(modes[index])
                 }
             }
         }
