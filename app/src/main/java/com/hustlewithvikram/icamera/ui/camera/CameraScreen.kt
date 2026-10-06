@@ -509,87 +509,77 @@ private fun TopControls(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (capabilities?.supportsUltraHdr == true) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0x55000000)
-                ) {
-                    Text(
-                        "HDR",
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
+        if (capabilities?.supportsUltraHdr == true) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0x55000000)
+            ) {
+                Text(
+                    "HDR",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
-
-            if (mode == CaptureMode.PRO) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0x55000000)
-                ) {
-                    Text(
-                        "PRO",
-                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelSmall
-                    )
-                }
-            }
+        } else {
+            Spacer(Modifier.size(1.dp))
         }
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(7.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0x660F0F0F),
+            tonalElevation = 2.dp
         ) {
-            if (capabilities?.hasFlash == true) {
-                CameraIconButton(
-                    onClick = onFlashClick,
-                    selected = flashMode != FlashMode.OFF,
-                    size = 38.dp
-                ) {
-                    Icon(
-                        imageVector = when {
-                            mode == CaptureMode.VIDEO && flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
-                            mode == CaptureMode.VIDEO -> Icons.Rounded.FlashOff
-                            flashMode == FlashMode.AUTO -> Icons.Rounded.FlashAuto
-                            flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
-                            else -> Icons.Rounded.FlashOff
-                        },
-                        contentDescription = "Flash",
-                        tint = Color.White
-                    )
-                }
-            }
-
-            if (capabilities?.exposureSupported == true) {
-                CameraIconButton(
-                    onClick = onExposureClick,
-                    selected = showExposure,
-                    size = 38.dp
-                ) {
-                    Icon(Icons.Rounded.Exposure, contentDescription = "Exposure", tint = Color.White)
-                }
-            }
-
-            CameraIconButton(
-                onClick = onGridClick,
-                selected = showGrid,
-                size = 38.dp
+            Row(
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Rounded.Grid3x3, contentDescription = "Grid", tint = Color.White)
-            }
+                if (capabilities?.hasFlash == true) {
+                    CameraIconButton(
+                        onClick = onFlashClick,
+                        selected = flashMode != FlashMode.OFF,
+                        size = 40.dp
+                    ) {
+                        Icon(
+                            imageVector = when {
+                                mode == CaptureMode.VIDEO && flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
+                                mode == CaptureMode.VIDEO -> Icons.Rounded.FlashOff
+                                flashMode == FlashMode.AUTO -> Icons.Rounded.FlashAuto
+                                flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
+                                else -> Icons.Rounded.FlashOff
+                            },
+                            contentDescription = "Flash",
+                            tint = Color.White
+                        )
+                    }
+                }
 
-            CameraIconButton(
-                onClick = onSettingsClick,
-                selected = false,
-                size = 38.dp
-            ) {
-                Text("•••", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                if (capabilities?.exposureSupported == true) {
+                    CameraIconButton(
+                        onClick = onExposureClick,
+                        selected = showExposure,
+                        size = 40.dp
+                    ) {
+                        Icon(Icons.Rounded.Exposure, contentDescription = "Exposure", tint = Color.White)
+                    }
+                }
+
+                CameraIconButton(
+                    onClick = onGridClick,
+                    selected = showGrid,
+                    size = 40.dp
+                ) {
+                    Icon(Icons.Rounded.Grid3x3, contentDescription = "Grid", tint = Color.White)
+                }
+
+                CameraIconButton(
+                    onClick = onSettingsClick,
+                    selected = false,
+                    size = 40.dp
+                ) {
+                    Text("•••", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }
@@ -745,6 +735,8 @@ private fun CameraModeRail(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    var programmaticScroll by remember { mutableStateOf(false) }
+
     val flingBehavior = rememberSnapFlingBehavior(
         lazyListState = listState,
         snapPosition = SnapPosition.Center
@@ -755,17 +747,30 @@ private fun CameraModeRail(
             .fillMaxWidth()
             .padding(top = 2.dp, bottom = 8.dp)
     ) {
-        val itemWidth = 72.dp
+        val itemWidth = 74.dp
         val sidePadding = ((maxWidth - itemWidth) / 2f).coerceAtLeast(0.dp)
 
-        LaunchedEffect(selected, modes) {
-            val index = modes.indexOf(selected)
-            if (index >= 0) {
-                val centerOffsetPx = with(density) {
-                    ((maxWidth.toPx() - itemWidth.toPx()) / 2f).roundToInt()
-                }
-                listState.animateScrollToItem(index, scrollOffset = -centerOffsetPx)
+        suspend fun centerMode(index: Int) {
+            if (index !in modes.indices) return
+            val centerOffsetPx = with(density) {
+                ((maxWidth.toPx() - itemWidth.toPx()) / 2f).roundToInt()
             }
+            // LazyList scrollOffset is the distance from the viewport start to the
+            // item's start. Positive is required to place the item in the center.
+            programmaticScroll = true
+            try {
+                listState.animateScrollToItem(
+                    index = index,
+                    scrollOffset = centerOffsetPx
+                )
+            } finally {
+                programmaticScroll = false
+            }
+        }
+
+        LaunchedEffect(modes) {
+            val index = modes.indexOf(selected)
+            if (index >= 0) centerMode(index)
         }
 
         LaunchedEffect(listState, modes) {
@@ -777,13 +782,17 @@ private fun CameraModeRail(
                     it.index to (it.offset + it.size / 2)
                 }
             }.collect { (scrolling, centers) ->
-                if (!scrolling && centers.isNotEmpty()) {
+                // Never let our own centering animation change the selected mode.
+                // Only a real user scroll is allowed to update the mode.
+                if (!scrolling && !programmaticScroll && centers.isNotEmpty()) {
                     val center = (listState.layoutInfo.viewportStartOffset +
                         listState.layoutInfo.viewportEndOffset) / 2
                     val nearest = centers.minByOrNull {
                         kotlin.math.abs(it.second - center)
                     }?.first
-                    if (nearest != null && nearest in modes.indices &&
+
+                    if (nearest != null &&
+                        nearest in modes.indices &&
                         modes[nearest] != selected
                     ) {
                         onSelected(modes[nearest])
@@ -795,9 +804,11 @@ private fun CameraModeRail(
         LazyRow(
             state = listState,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             flingBehavior = flingBehavior,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = sidePadding)
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                horizontal = sidePadding
+            )
         ) {
             items(modes, key = { it.name }) { item ->
                 val itemIndex = modes.indexOf(item)
@@ -806,25 +817,30 @@ private fun CameraModeRail(
 
                 val progress by remember(itemIndex, modes) {
                     derivedStateOf {
-                        val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
-                        val center = (listState.layoutInfo.viewportStartOffset +
-                            listState.layoutInfo.viewportEndOffset) / 2f
+                        val info = listState.layoutInfo.visibleItemsInfo
+                            .firstOrNull { it.index == itemIndex }
+                        val center = (
+                            listState.layoutInfo.viewportStartOffset +
+                                listState.layoutInfo.viewportEndOffset
+                            ) / 2f
                         val itemCenter = info?.let { it.offset + it.size / 2f } ?: center
-                        (1f - (
-                            kotlin.math.abs(itemCenter - center) /
-                                with(density) { itemWidth.toPx() * 2.4f }
-                            )).coerceIn(0f, 1f)
+                        (
+                            1f - (
+                                kotlin.math.abs(itemCenter - center) /
+                                    with(density) { itemWidth.toPx() * 2.5f }
+                                )
+                            ).coerceIn(0f, 1f)
                     }
                 }
 
                 Box(
                     modifier = Modifier
-                        .size(width = itemWidth, height = 34.dp)
+                        .size(width = itemWidth, height = 38.dp)
                         .graphicsLayer {
                             val p = if (active) 1f else progress
-                            scaleX = 0.82f + p * 0.18f
-                            scaleY = 0.82f + p * 0.18f
-                            alpha = 0.32f + p * 0.68f
+                            scaleX = 0.84f + p * 0.16f
+                            scaleY = 0.84f + p * 0.16f
+                            alpha = 0.28f + p * 0.72f
                         }
                         .pointerInput(active, item) {
                             detectVerticalDragGestures(
@@ -838,34 +854,40 @@ private fun CameraModeRail(
                                 onDragCancel = { verticalDrag = 0f }
                             )
                         }
-                        .clip(RoundedCornerShape(17.dp))
+                        .clip(RoundedCornerShape(19.dp))
                         .clickable {
                             if (!active) {
-                                scope.launch {
-                                    val index = modes.indexOf(item)
-                                    if (index >= 0) {
-                                        val centerOffsetPx = with(density) {
-                                            ((maxWidth.toPx() - itemWidth.toPx()) / 2f).roundToInt()
-                                        }
-                                        listState.animateScrollToItem(index, scrollOffset = -centerOffsetPx)
-                                    }
-                                }
+                                scope.launch { centerMode(itemIndex) }
+                            } else {
+                                onShowAllModes()
                             }
-                            onSelected(item)
                         },
                     contentAlignment = Alignment.Center
                 ) {
                     if (active) {
                         Surface(
                             modifier = Modifier.fillMaxSize(),
-                            shape = RoundedCornerShape(17.dp),
-                            color = Color(0x55202020)
+                            shape = RoundedCornerShape(19.dp),
+                            color = Color(0x661F1F1F),
+                            border = androidx.compose.foundation.BorderStroke(
+                                1.dp,
+                                Color.White.copy(alpha = 0.08f)
+                            )
                         ) {}
                     }
+
                     Text(
                         text = item.label,
-                        color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.92f),
-                        style = MaterialTheme.typography.labelLarge
+                        color = if (active) {
+                            Color(0xFFFFD60A)
+                        } else {
+                            Color.White.copy(alpha = 0.78f)
+                        },
+                        style = if (active) {
+                            MaterialTheme.typography.labelLarge
+                        } else {
+                            MaterialTheme.typography.labelMedium
+                        }
                     )
                 }
             }
