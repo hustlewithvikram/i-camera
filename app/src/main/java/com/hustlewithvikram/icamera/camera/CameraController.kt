@@ -147,6 +147,21 @@ class CameraController(private val context: Context) {
                 val activeCamera = camera ?: return@addListener
                 val zoomState = activeCamera.cameraInfo.zoomState.value
                 val exposure = activeCamera.cameraInfo.exposureState
+                val supportedPhotoModes = mutableSetOf(PhotoMode.PHOTO)
+                val supportedFormats = runCatching {
+                    ImageCapture.getImageCaptureCapabilities(activeCamera.cameraInfo).supportedOutputFormats
+                }.getOrDefault(setOf(ImageCapture.OUTPUT_FORMAT_JPEG))
+
+                if (!videoMode) {
+                    val extensionsManager = ExtensionsManager.getInstanceAsync(context, cameraProvider).get()
+                    listOf(PhotoMode.NIGHT, PhotoMode.HDR, PhotoMode.PORTRAIT, PhotoMode.RETOUCH, PhotoMode.AUTO).forEach { item ->
+                        if (item.extensionMode != null && runCatching {
+                                extensionsManager.isExtensionAvailable(selector, item.extensionMode)
+                            }.getOrDefault(false)) {
+                            supportedPhotoModes += item
+                        }
+                    }
+                }
 
                 onReady(
                     CameraCapabilities(
@@ -167,11 +182,11 @@ class CameraController(private val context: Context) {
                         supportsUltraHdr = supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_JPEG_ULTRA_HDR),
                         supportsRaw = supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW),
                         supportsRawJpeg = supportedFormats.contains(ImageCapture.OUTPUT_FORMAT_RAW_JPEG),
-                        supportsZeroShutterLag = image?.isZslSupported == true,
+                        supportsZeroShutterLag = false,
                         supportsConcurrentCamera = cameraProvider.availableConcurrentCameraInfos.isNotEmpty(),
                         macroMinFocusDistance = runCatching {
-                            androidx.camera.camera2.interop.Camera2Interop.getCameraCharacteristics(activeCamera.cameraInfo)
-                                .get(android.hardware.camera2.CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
+                            androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                                .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
                         }.getOrDefault(0f)
                     )
                 )
