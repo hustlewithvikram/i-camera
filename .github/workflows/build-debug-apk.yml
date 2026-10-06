@@ -50,7 +50,7 @@ jobs:
       - name: Install stable debug signing key
         run: |
           mkdir -p "$HOME/.android"
-          curl -fsSL "https://android.googlesource.com/platform/frameworks/support/+/3eace72feea5fbf3f491f1810352ce6a7fc745cf/development/keystore/debug.keystore?format=TEXT" |
+          curl -fsSL "https://android.googlesource.com/platform/frameworks/support/+/bf0289331e88399e38f5486200199bc857932e24/development/keystore/debug.keystore?format=TEXT" |
             sed '1d' |
             tr -d '\n' |
             base64 --decode > "$HOME/.android/debug.keystore"
