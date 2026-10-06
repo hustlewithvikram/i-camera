@@ -268,6 +268,10 @@ fun CameraScreen() {
                 onGridClick = { showGrid = !showGrid }
             )
 
+            if (mode == CaptureMode.PHOTO && capabilities != null) {
+                PhotoModeSelector(capabilities!!.supportedPhotoModes.toList(), photoMode) { photoMode = it }
+            }
+
             Spacer(Modifier.weight(1f))
 
             AnimatedVisibility(
@@ -431,6 +435,38 @@ private fun TopControls(
     }
 }
 
+@Composable
+private fun PhotoModeSelector(
+    modes: List<PhotoMode>,
+    selected: PhotoMode,
+    onSelected: (PhotoMode) -> Unit
+) {
+    AnimatedContent(
+        targetState = modes,
+        transitionSpec = {
+            (fadeIn() + slideInVertically(initialOffsetY = { it / 3 })) togetherWith
+                (fadeOut() + slideOutVertically(targetOffsetY = { -it / 3 }))
+        },
+        label = "photo_modes"
+    ) { available ->
+        LazyRow(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
+        ) {
+            items(available, key = { it.name }) { item ->
+                val active = item == selected
+                Surface(
+                    modifier = Modifier.clip(RoundedCornerShape(18.dp)).clickable { onSelected(item) },
+                    shape = RoundedCornerShape(18.dp),
+                    color = if (active) Color(0xD9FFFFFF) else Color(0x66111111)
+                ) {
+                    Text(item.label, modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp), color = if (active) Color.Black else Color.White, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+}
 @Composable
 private fun ZoomControl(
     maxZoom: Float,
