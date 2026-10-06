@@ -3,16 +3,29 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Minimal camera body -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M32,39 L40,30 L51,30 L56,25 L68,25 L73,30 L76,30 C82,30 86,34 86,40 L86,70 C86,76 82,80 76,80 L32,80 C26,80 22,76 22,70 L22,49 C22,43 26,39 32,39 Z" />
+        android:fillColor="#FF24272D"
+        android:pathData="M31,35 L42,35 L47,29 L61,29 L66,35 L77,35 C83,35 87,39 87,45 L87,70 C87,76 83,80 77,80 L31,80 C25,80 21,76 21,70 L21,45 C21,39 25,35 31,35 Z" />
+
+    <!-- Lens ring -->
     <path
-        android:fillColor="#FF101010"
-        android:pathData="M54,42 A13,13 0,1 0,54 68 A13,13 0,1 0,54 42 Z" />
+        android:fillColor="#FFF5F5F5"
+        android:pathData="M54,42 A15,15 0,1 0,54 72 A15,15 0,1 0,54 42 Z" />
+
+    <!-- Lens -->
     <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M54,47 A8,8 0,1 0,54 63 A8,8 0,1 0,54 47 Z" />
+        android:fillColor="#FF0C1016"
+        android:pathData="M54,46 A11,11 0,1 0,54 68 A11,11 0,1 0,54 46 Z" />
+
+    <!-- Lens highlight -->
     <path
-        android:fillColor="#FF101010"
-        android:pathData="M70,43 A3.5,3.5 0,1 0,70 50 A3.5,3.5 0,1 0,70 43 Z" />
+        android:fillColor="#FF303640"
+        android:pathData="M49,49 A7,7 0,0 1,60 52 A11,11 0,0 0,47 61 A11,11 0,0 1,49 49 Z" />
+
+    <!-- Status/flash dot -->
+    <path
+        android:fillColor="#FFFFC233"
+        android:pathData="M74,43 A3,3 0,1 0,74 49 A3,3 0,1 0,74 43 Z" />
 </vector>
