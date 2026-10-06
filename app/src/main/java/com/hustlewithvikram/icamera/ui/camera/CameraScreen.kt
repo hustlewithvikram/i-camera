@@ -94,10 +94,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private enum class CaptureMode(val label: String) {
-    PHOTO("PHOTO"),
+private enum class CaptureMode(
+    val label: String,
+    val photoMode: PhotoMode? = null
+) {
+    PHOTO("PHOTO", PhotoMode.PHOTO),
     VIDEO("VIDEO"),
-    DUAL("DUAL")
+    PORTRAIT("PORTRAIT", PhotoMode.PORTRAIT),
+    NIGHT("NIGHT", PhotoMode.NIGHT),
+    MACRO("MACRO", PhotoMode.MACRO),
+    PRO("PRO"),
+    RAW("RAW", PhotoMode.RAW),
+    DUAL("DUAL", null)
 }
 
 private enum class FlashMode {
@@ -122,7 +130,6 @@ fun CameraScreen() {
     }
 
     var mode by remember { mutableStateOf(CaptureMode.PHOTO) }
-    var photoMode by remember { mutableStateOf(PhotoMode.PHOTO) }
     var previewScale by remember { mutableFloatStateOf(1f) }
     var previewAlpha by remember { mutableFloatStateOf(1f) }
     var showSettings by remember { mutableStateOf(false) }
@@ -178,8 +185,8 @@ fun CameraScreen() {
             previewView = previewView,
             lifecycleOwner = lifecycleOwner,
             selector = selector,
-            videoMode = mode == CaptureMode.VIDEO,
-            photoMode = if (mode == CaptureMode.PHOTO) photoMode else PhotoMode.PHOTO,
+            videoMode = mode == CaptureMode.VIDEO || mode == CaptureMode.DUAL,
+            photoMode = mode.photoMode ?: PhotoMode.PHOTO,
             onReady = { caps ->
                 capabilities = caps
                 zoom = zoom.coerceIn(1f, caps.maxZoomRatio)
@@ -194,7 +201,7 @@ fun CameraScreen() {
         )
     }
 
-    LaunchedEffect(mode, photoMode, frontCamera) {
+    LaunchedEffect(mode, frontCamera) {
         previewScale = 0.965f
         previewAlpha = 0.72f
         kotlinx.coroutines.delay(45)
@@ -313,10 +320,6 @@ fun CameraScreen() {
                 onGridClick = { showGrid = !showGrid }
             )
 
-            if (mode == CaptureMode.PHOTO && capabilities != null) {
-                PhotoModeSelector(capabilities!!.supportedPhotoModes.toList(), photoMode) { photoMode = it }
-            }
-
             AnimatedVisibility(
                 visible = showSettings,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { -it / 3 }),
@@ -376,7 +379,7 @@ fun CameraScreen() {
                     }
                 },
                 onCapture = {
-                    if (mode == CaptureMode.PHOTO) {
+                    if (mode != CaptureMode.VIDEO && mode != CaptureMode.DUAL) {
                         controller.imageCapture?.let { image ->
                             image.flashMode = flashMode.toImageFlashMode()
                             capture.capture(image) { uri ->
