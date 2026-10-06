@@ -774,7 +774,7 @@ private fun CameraModeRail(
                         val center = (listState.layoutInfo.viewportStartOffset +
                             listState.layoutInfo.viewportEndOffset) / 2f
                         val itemCenter = info?.let { it.offset + it.size / 2f } ?: center
-                        (1f - (kotlin.math.abs(itemCenter - center) / (92.dp.toPx() * 2.2f)))
+                        (1f - (kotlin.math.abs(itemCenter - center) / with(density) { 92.dp.toPx() * 2.2f }))
                             .coerceIn(0f, 1f)
                     }
                 }
