@@ -51,7 +51,7 @@ jobs:
           sdkmanager --list_installed | grep -E "platforms;android-36|build-tools;35.0.0"
 
       - name: Build release APK
-        run: ./gradlew --no-daemon --stacktrace assembleRelease
+        run: gradle --no-daemon --stacktrace assembleRelease
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4
