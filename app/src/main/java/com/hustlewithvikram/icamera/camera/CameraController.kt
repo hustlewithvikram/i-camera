@@ -2,7 +2,6 @@ package com.hustlewithvikram.icamera.camera
 
 import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.os.Build
 import androidx.camera.core.Camera
@@ -216,46 +215,22 @@ class CameraController(private val context: Context) {
                     supportedPhotoModes += PhotoMode.RAW
                 }
 
-                // Discover a real physical ultra-wide lens. CameraX 1.4+ can bind a
-                // physical camera from a logical multi-camera without pretending that
-                // digital zoom below 1x exists.
+                // Discover a real physical ultra-wide lens from CameraX's
+                // physical-camera metadata. CameraX defines intrinsicZoomRatio < 1.0
+                // as an ultra-wide camera, so this is hardware capability detection,
+                // not a fake digital zoom value.
                 var discoveredUltraWideSelector: CameraSelector? = null
                 var discoveredUltraWideRatio = 0.5f
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    runCatching {
-                        val logicalInfo = Camera2CameraInfo.from(capabilityInfo)
-                        if (logicalInfo.isLogicalMultiCameraSupported) {
-                            val physicalInfos = capabilityInfo.physicalCameraInfos
-                            val logicalFocal = logicalInfo.getCameraCharacteristic(
-                                CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS
-                            )?.minOrNull()
+                runCatching {
+                    val physicalCandidate = capabilityInfo.physicalCameraInfos
+                        .filter { it.lensFacing == CameraSelector.LENS_FACING_BACK }
+                        .filter { it.intrinsicZoomRatio < 0.98f }
+                        .minByOrNull { it.intrinsicZoomRatio }
 
-                            val candidate = physicalInfos.mapNotNull { physicalInfo ->
-                                val physicalFacing = physicalInfo.lensFacing
-                                if (physicalFacing != CameraSelector.LENS_FACING_BACK) return@mapNotNull null
-
-                                val focal = Camera2CameraInfo.from(physicalInfo)
-                                    .getCameraCharacteristic(
-                                        CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS
-                                    )?.minOrNull() ?: return@mapNotNull null
-
-                                val selector = physicalInfo.cameraSelector
-                                val ratio = if (logicalFocal != null && logicalFocal > 0f) {
-                                    focal / logicalFocal
-                                } else {
-                                    0f
-                                }
-
-                                Triple(ratio, focal, selector)
-                            }
-                                .filter { it.first in 0.35f..0.80f }
-                                .minByOrNull { it.second }
-
-                            if (candidate != null) {
-                                discoveredUltraWideRatio = candidate.first.coerceIn(0.35f, 0.80f)
-                                discoveredUltraWideSelector = candidate.third
-                            }
-                        }
+                    if (physicalCandidate != null) {
+                        discoveredUltraWideRatio = physicalCandidate.intrinsicZoomRatio
+                            .coerceIn(0.35f, 0.98f)
+                        discoveredUltraWideSelector = physicalCandidate.cameraSelector
                     }
                 }
 
