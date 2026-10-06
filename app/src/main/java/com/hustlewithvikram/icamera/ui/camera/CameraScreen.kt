@@ -299,19 +299,6 @@ fun CameraScreen() {
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
         ) {
-            Box(
-                modifier = Modifier.fillMaxWidth().padding(end = 10.dp),
-                contentAlignment = Alignment.TopEnd
-            ) {
-                CameraIconButton(
-                    onClick = { showSettings = !showSettings },
-                    selected = showSettings,
-                    size = 44.dp
-                ) {
-                    Text("...", color = Color.White)
-                }
-            }
-
             TopControls(
                 capabilities = capabilities,
                 flashMode = flashMode,
@@ -393,17 +380,6 @@ fun CameraScreen() {
                 }
             )
 
-            CameraModeRail(
-                selected = mode,
-                modes = availableCaptureModes(capabilities),
-                onSelected = { next ->
-                    if (!isRecording) mode = next
-                },
-                onShowAllModes = {
-                    if (!isRecording) showModeSheet = true
-                }
-            )
-
             BottomControls(
                 mode = mode,
                 canVideo = capabilities?.hasVideo == true,
@@ -459,7 +435,18 @@ fun CameraScreen() {
                         flashMode = FlashMode.AUTO
                     }
                 }
+            )            CameraModeRail(
+                selected = mode,
+                modes = availableCaptureModes(capabilities),
+                onSelected = { next ->
+                    if (!isRecording) mode = next
+                },
+                onShowAllModes = {
+                    if (!isRecording) showModeSheet = true
+                }
             )
+
+
         }
 
         ModePickerSheet(
@@ -514,47 +501,83 @@ private fun TopControls(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        if (capabilities?.hasFlash == true) {
-            CameraIconButton(
-                onClick = onFlashClick,
-                selected = flashMode != FlashMode.OFF
-            ) {
-                Icon(
-                    imageVector = if (mode == CaptureMode.VIDEO) {
-                        if (flashMode == FlashMode.ON) Icons.Rounded.FlashOn
-                        else Icons.Rounded.FlashOff
-                    } else {
-                        when (flashMode) {
-                            FlashMode.AUTO -> Icons.Rounded.FlashAuto
-                            FlashMode.ON -> Icons.Rounded.FlashOn
-                            FlashMode.OFF -> Icons.Rounded.FlashOff
-                        }
-                    },
-                    contentDescription = "Flash"
-                )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (capabilities?.supportsUltraHdr == true) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0x55000000)
+                ) {
+                    Text(
+                        "HDR",
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
             }
-        } else {
-            Spacer(Modifier.size(48.dp))
+
+            if (mode == CaptureMode.PRO) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0x55000000)
+                ) {
+                    Text(
+                        "PRO",
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (capabilities?.hasFlash == true) {
+                CameraIconButton(
+                    onClick = onFlashClick,
+                    selected = flashMode != FlashMode.OFF,
+                    size = 38.dp
+                ) {
+                    Icon(
+                        imageVector = when {
+                            mode == CaptureMode.VIDEO && flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
+                            mode == CaptureMode.VIDEO -> Icons.Rounded.FlashOff
+                            flashMode == FlashMode.AUTO -> Icons.Rounded.FlashAuto
+                            flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
+                            else -> Icons.Rounded.FlashOff
+                        },
+                        contentDescription = "Flash",
+                        tint = Color.White
+                    )
+                }
+            }
+
             if (capabilities?.exposureSupported == true) {
                 CameraIconButton(
                     onClick = onExposureClick,
-                    selected = showExposure
+                    selected = showExposure,
+                    size = 38.dp
                 ) {
-                    Icon(Icons.Rounded.Exposure, contentDescription = "Exposure")
+                    Icon(Icons.Rounded.Exposure, contentDescription = "Exposure", tint = Color.White)
                 }
             }
 
             CameraIconButton(
                 onClick = onGridClick,
-                selected = showGrid
+                selected = showGrid,
+                size = 38.dp
             ) {
-                Icon(Icons.Rounded.Grid3x3, contentDescription = "Grid")
+                Icon(Icons.Rounded.Grid3x3, contentDescription = "Grid", tint = Color.White)
             }
         }
     }
@@ -601,43 +624,43 @@ private fun ZoomControl(
     if (maxZoom <= 1.01f) return
 
     val options = buildList {
+        if (maxZoom >= 0.6f) add(0.5f.coerceAtLeast(1f / maxZoom))
         add(1f)
         if (maxZoom >= 2f) add(2f)
         if (maxZoom >= 3f) add(3f)
-    }
+    }.distinct()
 
-    LazyRow(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.Center
+            .padding(bottom = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        items(options) { ratio ->
-            Surface(
+        options.forEach { ratio ->
+            val active = abs(value - ratio) < 0.08f
+            Box(
                 modifier = Modifier
-                    .padding(horizontal = 4.dp)
-                    .size(42.dp)
+                    .size(if (active) 44.dp else 38.dp)
                     .clip(CircleShape)
-                    .clickable { onValueChange(ratio) },
-                shape = CircleShape,
-                color = if (abs(value - ratio) < 0.08f) {
-                    Color(0xAAFFFFFF)
-                } else {
-                    Color(0x66111111)
-                }
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    val label = if (ratio % 1f == 0f) {
-                        ratio.toInt().toString() + "×"
-                    } else {
-                        String.format(Locale.US, "%.1f×", ratio)
-                    }
-                    Text(
-                        label,
-                        color = Color.White,
-                        style = MaterialTheme.typography.labelMedium
+                    .background(
+                        if (active) Color(0x995C5B45) else Color.Transparent
                     )
+                    .clickable { onValueChange(ratio.coerceIn(1f, maxZoom)) },
+                contentAlignment = Alignment.Center
+            ) {
+                val label = if (ratio < 1f) {
+                    String.format(Locale.US, "%.1f", ratio)
+                } else if (ratio % 1f == 0f) {
+                    ratio.toInt().toString()
+                } else {
+                    String.format(Locale.US, "%.1f", ratio)
                 }
+                Text(
+                    text = label + "×",
+                    color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.92f),
+                    style = MaterialTheme.typography.labelLarge
+                )
             }
         }
     }
@@ -718,15 +741,16 @@ private fun CameraModeRail(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(top = 2.dp, bottom = 8.dp)
     ) {
-        val sidePadding = ((maxWidth - 92.dp) / 2f).coerceAtLeast(0.dp)
+        val itemWidth = 72.dp
+        val sidePadding = ((maxWidth - itemWidth) / 2f).coerceAtLeast(0.dp)
 
         LaunchedEffect(selected, modes) {
             val index = modes.indexOf(selected)
             if (index >= 0) {
                 val centerOffsetPx = with(density) {
-                    ((maxWidth.toPx() - 92.dp.toPx()) / 2f).roundToInt()
+                    ((maxWidth.toPx() - itemWidth.toPx()) / 2f).roundToInt()
                 }
                 listState.animateScrollToItem(index, scrollOffset = -centerOffsetPx)
             }
@@ -759,48 +783,36 @@ private fun CameraModeRail(
         LazyRow(
             state = listState,
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             flingBehavior = flingBehavior,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = sidePadding)
         ) {
             items(modes, key = { it.name }) { item ->
                 val itemIndex = modes.indexOf(item)
                 val active = item == selected
-                val scale = remember { Animatable(if (active) 1f else 0.84f) }
                 var verticalDrag by remember { mutableFloatStateOf(0f) }
-                val itemVisualProgress by remember(itemIndex, modes) {
+
+                val progress by remember(itemIndex, modes) {
                     derivedStateOf {
                         val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
                         val center = (listState.layoutInfo.viewportStartOffset +
                             listState.layoutInfo.viewportEndOffset) / 2f
                         val itemCenter = info?.let { it.offset + it.size / 2f } ?: center
-                        (1f - (kotlin.math.abs(itemCenter - center) / with(density) { 92.dp.toPx() * 2.2f }))
-                            .coerceIn(0f, 1f)
-                    }
-                }
-
-                LaunchedEffect(active) {
-                    if (active) {
-                        scale.snapTo(0.86f)
-                        scale.animateTo(
-                            1f,
-                            spring(
-                                dampingRatio = 0.62f,
-                                stiffness = Spring.StiffnessMediumLow
-                            )
-                        )
+                        (1f - (
+                            kotlin.math.abs(itemCenter - center) /
+                                with(density) { itemWidth.toPx() * 2.4f }
+                            )).coerceIn(0f, 1f)
                     }
                 }
 
                 Box(
                     modifier = Modifier
-                        .size(width = 92.dp, height = 42.dp)
+                        .size(width = itemWidth, height = 34.dp)
                         .graphicsLayer {
-                            val carouselProgress = if (active) 1f else itemVisualProgress
-                            val dynamicScale = 0.78f + carouselProgress * 0.22f
-                            scaleX = if (active) scale.value else dynamicScale
-                            scaleY = if (active) scale.value else dynamicScale
-                            alpha = 0.30f + carouselProgress * 0.70f
+                            val p = if (active) 1f else progress
+                            scaleX = 0.82f + p * 0.18f
+                            scaleY = 0.82f + p * 0.18f
+                            alpha = 0.32f + p * 0.68f
                         }
                         .pointerInput(active, item) {
                             detectVerticalDragGestures(
@@ -808,20 +820,20 @@ private fun CameraModeRail(
                                     if (active) verticalDrag += dragAmount
                                 },
                                 onDragEnd = {
-                                    if (active && verticalDrag < -42f) onShowAllModes()
+                                    if (active && verticalDrag < -36f) onShowAllModes()
                                     verticalDrag = 0f
                                 },
                                 onDragCancel = { verticalDrag = 0f }
                             )
                         }
-                        .clip(RoundedCornerShape(20.dp))
+                        .clip(RoundedCornerShape(17.dp))
                         .clickable {
                             if (!active) {
                                 scope.launch {
                                     val index = modes.indexOf(item)
                                     if (index >= 0) {
                                         val centerOffsetPx = with(density) {
-                                            ((maxWidth.toPx() - 92.dp.toPx()) / 2f).roundToInt()
+                                            ((maxWidth.toPx() - itemWidth.toPx()) / 2f).roundToInt()
                                         }
                                         listState.animateScrollToItem(index, scrollOffset = -centerOffsetPx)
                                     }
@@ -831,25 +843,18 @@ private fun CameraModeRail(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (active) Color(0xE6FFFFFF) else Color(0x33111111),
-                        tonalElevation = if (active) 3.dp else 0.dp,
-                        shadowElevation = if (active) 2.dp else 0.dp
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = item.label,
-                                color = if (active) Color.Black else Color.White,
-                                style = if (active) {
-                                    MaterialTheme.typography.labelLarge
-                                } else {
-                                    MaterialTheme.typography.labelMedium
-                                }
-                            )
-                        }
+                    if (active) {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            shape = RoundedCornerShape(17.dp),
+                            color = Color(0x55202020)
+                        ) {}
                     }
+                    Text(
+                        text = item.label,
+                        color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.92f),
+                        style = MaterialTheme.typography.labelLarge
+                    )
                 }
             }
         }
@@ -982,40 +987,34 @@ private fun BottomControls(
     onCapture: () -> Unit,
     onSwitchCamera: () -> Unit
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(horizontal = 22.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            LatestThumbnail(lastPhotoUri)
+        LatestThumbnail(lastPhotoUri)
 
-            ShutterButton(
-                isRecording = isRecording,
-                onClick = onCapture
-            )
+        ShutterButton(
+            isRecording = isRecording,
+            onClick = onCapture
+        )
 
-            if (hasFrontCamera) {
-                CameraIconButton(
-                    onClick = onSwitchCamera,
-                    selected = false,
-                    size = 52.dp
-                ) {
-                    Icon(
-                        Icons.Rounded.Cameraswitch,
-                        contentDescription = "Switch camera",
-                        tint = Color.White
-                    )
-                }
-            } else {
-                Spacer(Modifier.size(52.dp))
+        if (hasFrontCamera) {
+            CameraIconButton(
+                onClick = onSwitchCamera,
+                selected = false,
+                size = 52.dp
+            ) {
+                Icon(
+                    Icons.Rounded.Cameraswitch,
+                    contentDescription = "Switch camera",
+                    tint = Color.White
+                )
             }
+        } else {
+            Spacer(Modifier.size(52.dp))
         }
     }
 }
