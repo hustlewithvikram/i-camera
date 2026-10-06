@@ -8,7 +8,6 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.core.DynamicRange
-import androidx.camera.core.ImageCaptureCapabilities
 import androidx.camera.extensions.ExtensionMode
 import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.video.FallbackStrategy
@@ -48,6 +47,7 @@ enum class PhotoMode(val label: String, val extensionMode: Int?) {
     AUTO("AUTO", ExtensionMode.AUTO)
 }
 
+@androidx.camera.camera2.interop.ExperimentalCamera2Interop
 class CameraController(private val context: Context) {
     private var provider: ProcessCameraProvider? = null
 
