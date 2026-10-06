@@ -3,6 +3,8 @@ package com.hustlewithvikram.icamera.camera
 import android.content.Context
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ConcurrentCamera
+import androidx.camera.core.UseCaseGroup
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
@@ -59,6 +61,9 @@ class CameraController(private val context: Context) {
         private set
 
     private var recording: Recording? = null
+    private var secondaryRecording: Recording? = null
+    var secondaryVideoCapture: VideoCapture<Recorder>? = null
+        private set
 
     fun bind(
         previewView: PreviewView,
@@ -196,6 +201,75 @@ class CameraController(private val context: Context) {
         }, ContextCompat.getMainExecutor(context))
     }
 
+    fun bindConcurrent(
+        primaryPreviewView: PreviewView,
+        secondaryPreviewView: PreviewView,
+        lifecycleOwner: LifecycleOwner,
+        onReady: () -> Unit,
+        onError: (Throwable) -> Unit
+    ) {
+        val future = ProcessCameraProvider.getInstance(context)
+        future.addListener({
+            try {
+                val cameraProvider = future.get()
+                provider = cameraProvider
+                cameraProvider.unbindAll()
+                val pair = cameraProvider.availableConcurrentCameraInfos.firstOrNull { infos ->
+                    infos.any { it.lensFacing == CameraSelector.LENS_FACING_BACK } &&
+                        infos.any { it.lensFacing == CameraSelector.LENS_FACING_FRONT }
+                } ?: throw IllegalStateException("Dual camera is not supported.")
+                val backInfo = pair.first { it.lensFacing == CameraSelector.LENS_FACING_BACK }
+                val frontInfo = pair.first { it.lensFacing == CameraSelector.LENS_FACING_FRONT }
+                val backPreview = Preview.Builder().build().also { it.setSurfaceProvider(primaryPreviewView.surfaceProvider) }
+                val frontPreview = Preview.Builder().build().also { it.setSurfaceProvider(secondaryPreviewView.surfaceProvider) }
+                val backRecorder = Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).build()
+                val frontRecorder = Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).build()
+                val backVideo = VideoCapture.withOutput(backRecorder)
+                val frontVideo = VideoCapture.withOutput(frontRecorder)
+                val backGroup = UseCaseGroup.Builder().addUseCase(backPreview).addUseCase(backVideo).build()
+                val frontGroup = UseCaseGroup.Builder().addUseCase(frontPreview).addUseCase(frontVideo).build()
+                val configs = listOf(
+                    ConcurrentCamera.SingleCameraConfig(backInfo.cameraSelector, backGroup, lifecycleOwner),
+                    ConcurrentCamera.SingleCameraConfig(frontInfo.cameraSelector, frontGroup, lifecycleOwner)
+                )
+                val concurrent = cameraProvider.bindToLifecycle(configs)
+                if (concurrent.cameras.size != 2) throw IllegalStateException("Dual camera binding failed.")
+                camera = concurrent.cameras[0]
+                videoCapture = backVideo
+                secondaryVideoCapture = frontVideo
+                onReady()
+            } catch (t: Throwable) {
+                secondaryVideoCapture = null
+                onError(t)
+            }
+        }, ContextCompat.getMainExecutor(context))
+    }
+
+    fun startDualRecording(
+        capture: CameraCapture,
+        withAudio: Boolean,
+        onStarted: () -> Unit,
+        onFinished: () -> Unit
+    ) {
+        val primary = videoCapture ?: return
+        val secondary = secondaryVideoCapture ?: return
+        var primaryFinished = false
+        var secondaryFinished = false
+        fun finishIfBoth() {
+            if (primaryFinished && secondaryFinished) onFinished()
+        }
+        recording = capture.startVideo(primary, withAudio, onStarted) {
+            primaryFinished = true
+            recording = null
+            finishIfBoth()
+        }
+        secondaryRecording = capture.startVideo(secondary, false, {}, {
+            secondaryFinished = true
+            secondaryRecording = null
+            finishIfBoth()
+        })
+    }
+
     fun startRecording(
         capture: CameraCapture,
         withAudio: Boolean,
@@ -216,7 +290,9 @@ class CameraController(private val context: Context) {
 
     fun stopRecordingIfNeeded() {
         recording?.stop()
+        secondaryRecording?.stop()
         recording = null
+        secondaryRecording = null
     }
 
     fun setZoom(ratio: Float) {
@@ -246,5 +322,6 @@ class CameraController(private val context: Context) {
         camera = null
         imageCapture = null
         videoCapture = null
+        secondaryVideoCapture = null
     }
 }
