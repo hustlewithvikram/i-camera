@@ -67,6 +67,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -619,6 +620,10 @@ private fun ShutterButton(
     Box(
         modifier = Modifier
             .size(82.dp)
+            .graphicsLayer {
+                scaleX = scale.value
+                scaleY = scale.value
+            }
             .clickable {
                 scope.launch {
                     scale.animateTo(
