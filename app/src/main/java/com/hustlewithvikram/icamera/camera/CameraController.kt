@@ -50,7 +50,12 @@ data class CameraCapabilities(
     val exposureTimeMinNs: Long,
     val exposureTimeMaxNs: Long,
     val supportsUltraWide: Boolean = false,
-    val ultraWideZoomRatio: Float = 0.5f
+    val ultraWideZoomRatio: Float = 0.5f,
+    val supportsPanorama: Boolean = false,
+    val supportsDocumentScan: Boolean = false,
+    val supportsSlowMotion: Boolean = false,
+    val supportsTimelapse: Boolean = false,
+    val supportsDualPhotoVideo: Boolean = false
 )
 
 enum class PhotoMode(val label: String, val extensionMode: Int?) {
@@ -78,6 +83,8 @@ class CameraController(private val context: Context) {
     private var recording: Recording? = null
     private var secondaryRecording: Recording? = null
     var secondaryVideoCapture: VideoCapture<Recorder>? = null
+        private set
+    var secondaryImageCapture: ImageCapture? = null
         private set
 
     private var ultraWideSelector: CameraSelector? = null
@@ -189,6 +196,18 @@ class CameraController(private val context: Context) {
                 }.getOrNull() ?: activeCamera.cameraInfo
 
                 val supportedPhotoModes = mutableSetOf(PhotoMode.PHOTO)
+                val supportsHighSpeedVideo = runCatching {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val characteristics = androidx.camera.camera2.interop.Camera2CameraInfo
+                            .from(capabilityInfo)
+                        val configs = characteristics.getCameraCharacteristic(
+                            CameraCharacteristics.CONTROL_AVAILABLE_HIGH_SPEED_VIDEO_CONFIGURATIONS
+                        )
+                        !configs.isNullOrEmpty()
+                    } else {
+                        false
+                    }
+                }.getOrDefault(false)
                 val supportedFormats = runCatching {
                     ImageCapture.getImageCaptureCapabilities(capabilityInfo).supportedOutputFormats
                 }.getOrDefault(setOf(ImageCapture.OUTPUT_FORMAT_JPEG))
@@ -272,13 +291,33 @@ class CameraController(private val context: Context) {
                         exposureTimeMinNs = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.lower ?: 1_000_000L }.getOrDefault(1_000_000L),
                         exposureTimeMaxNs = runCatching { androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo).getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)?.upper ?: 100_000_000L }.getOrDefault(100_000_000L),
                         supportsUltraWide = discoveredUltraWideSelector != null,
-                        ultraWideZoomRatio = discoveredUltraWideRatio
+                        ultraWideZoomRatio = discoveredUltraWideRatio,
+                        // Panorama and document scanning are software-assisted modes.
+                        // They are only exposed on a camera that can capture stills.
+                        supportsPanorama = image != null && !frontCameraSelector(capabilitySelector),
+                        supportsDocumentScan = image != null,
+                        // Slow motion is exposed only when Camera2 reports a
+                        // constrained high-speed video capability.
+                        supportsSlowMotion = supportsHighSpeedVideo,
+                        supportsTimelapse = video != null,
+                        supportsDualPhotoVideo = cameraProvider.availableConcurrentCameraInfos.any { infos ->
+                            infos.any { it.lensFacing == CameraSelector.LENS_FACING_BACK } &&
+                                infos.any { it.lensFacing == CameraSelector.LENS_FACING_FRONT }
+                        }
                     )
                 )
             } catch (t: Throwable) {
                 onError(t)
             }
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    private fun frontCameraSelector(selector: CameraSelector): Boolean {
+        return runCatching {
+            provider?.getCameraInfo(selector)?.let {
+                it.lensFacing == CameraSelector.LENS_FACING_FRONT
+            } ?: false
+        }.getOrDefault(false)
     }
 
     fun bindConcurrent(
@@ -302,12 +341,26 @@ class CameraController(private val context: Context) {
                 val frontInfo = pair.first { it.lensFacing == CameraSelector.LENS_FACING_FRONT }
                 val backPreview = Preview.Builder().build().also { it.setSurfaceProvider(primaryPreviewView.surfaceProvider) }
                 val frontPreview = Preview.Builder().build().also { it.setSurfaceProvider(secondaryPreviewView.surfaceProvider) }
+                val backImage = ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                    .build()
+                val frontImage = ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                    .build()
                 val backRecorder = Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).build()
                 val frontRecorder = Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HD)).build()
                 val backVideo = VideoCapture.withOutput(backRecorder)
                 val frontVideo = VideoCapture.withOutput(frontRecorder)
-                val backGroup = UseCaseGroup.Builder().addUseCase(backPreview).addUseCase(backVideo).build()
-                val frontGroup = UseCaseGroup.Builder().addUseCase(frontPreview).addUseCase(frontVideo).build()
+                val backGroup = UseCaseGroup.Builder()
+                    .addUseCase(backPreview)
+                    .addUseCase(backImage)
+                    .addUseCase(backVideo)
+                    .build()
+                val frontGroup = UseCaseGroup.Builder()
+                    .addUseCase(frontPreview)
+                    .addUseCase(frontImage)
+                    .addUseCase(frontVideo)
+                    .build()
                 val configs = listOf(
                     ConcurrentCamera.SingleCameraConfig(backInfo.cameraSelector, backGroup, lifecycleOwner),
                     ConcurrentCamera.SingleCameraConfig(frontInfo.cameraSelector, frontGroup, lifecycleOwner)
@@ -317,6 +370,8 @@ class CameraController(private val context: Context) {
                 camera = concurrent.cameras[0]
                 videoCapture = backVideo
                 secondaryVideoCapture = frontVideo
+                imageCapture = backImage
+                secondaryImageCapture = frontImage
                 onReady()
             } catch (t: Throwable) {
                 secondaryVideoCapture = null
@@ -446,5 +501,6 @@ class CameraController(private val context: Context) {
         imageCapture = null
         videoCapture = null
         secondaryVideoCapture = null
+        secondaryImageCapture = null
     }
 }
