@@ -25,6 +25,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 
 data class CameraCapabilities(
     val hasFlash: Boolean,
@@ -55,7 +56,8 @@ data class CameraCapabilities(
     val supportsDocumentScan: Boolean = false,
     val supportsSlowMotion: Boolean = false,
     val supportsTimelapse: Boolean = false,
-    val supportsDualPhotoVideo: Boolean = false
+    val supportsDualPhotoVideo: Boolean = false,
+    val hardwareZoomRatios: List<Float> = emptyList()
 )
 
 enum class PhotoMode(val label: String, val extensionMode: Int?) {
@@ -262,6 +264,16 @@ class CameraController(private val context: Context) {
 
                 ultraWideSelector = discoveredUltraWideSelector
                 ultraWideZoomRatio = discoveredUltraWideRatio
+
+                val hardwareZoomRatios = runCatching {
+                    capabilityInfo.physicalCameraInfos
+                        .filter { it.lensFacing == CameraSelector.LENS_FACING_BACK }
+                        .map { it.intrinsicZoomRatio }
+                        .filter { it.isFinite() && it > 1.01f }
+                        .map { (it * 10f).roundToInt() / 10f }
+                        .distinct()
+                        .sorted()
+                }.getOrDefault(emptyList())
                 if (photoMode == PhotoMode.MACRO) setMacro(true, activeMacroDistance) else setMacro(false, 0f)
 
                 onReady(
@@ -310,7 +322,8 @@ class CameraController(private val context: Context) {
                         supportsDualPhotoVideo = cameraProvider.availableConcurrentCameraInfos.any { infos ->
                             infos.any { it.lensFacing == CameraSelector.LENS_FACING_BACK } &&
                                 infos.any { it.lensFacing == CameraSelector.LENS_FACING_FRONT }
-                        }
+                        },
+                        hardwareZoomRatios = hardwareZoomRatios
                     )
                 )
             } catch (t: Throwable) {
