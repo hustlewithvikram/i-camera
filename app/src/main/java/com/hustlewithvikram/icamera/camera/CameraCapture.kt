@@ -366,6 +366,7 @@ class CameraCapture(private val context: Context) {
     private fun transformVideo(
         sourceUri: Uri,
         transform: VideoTransform,
+        sourceFps: Int,
         onFinished: () -> Unit
     ) {
         Thread {
