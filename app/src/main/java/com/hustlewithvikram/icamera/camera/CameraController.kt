@@ -575,6 +575,12 @@ class CameraController(private val context: Context) {
     }
 
     @androidx.camera.camera2.interop.ExperimentalCamera2Interop
+    fun setExtensionStrength(strength: Int) {
+        val activeCamera = camera ?: return
+        extensionsManager?.getCameraExtensionsControl(activeCamera.cameraControl)
+            ?.setExtensionStrength(strength.coerceIn(0, 100))
+    }
+
     fun setWhiteBalance(mode: Int) {
         val activeCamera = camera ?: return
         val control = androidx.camera.camera2.interop.Camera2CameraControl.from(activeCamera.cameraControl)
