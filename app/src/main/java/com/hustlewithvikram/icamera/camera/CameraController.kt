@@ -61,7 +61,11 @@ data class CameraCapabilities(
     val hardwareZoomRatios: List<Float> = emptyList(),
     val hardwareUltraWideRatios: List<Float> = emptyList(),
     val supportedVideoFps: List<Int> = emptyList(),
-    val supportsExtensionStrength: Boolean = false
+    val supportsExtensionStrength: Boolean = false,
+    val supportsAeAfLock: Boolean = false,
+    val supportsOpticalStabilization: Boolean = false,
+    val supportsElectronicStabilization: Boolean = false,
+    val supportsFaceDetection: Boolean = false
 )
 
 enum class PhotoMode(val label: String, val extensionMode: Int?) {
@@ -320,6 +324,28 @@ class CameraController(private val context: Context) {
                 if (requestGeneration != bindGeneration) return@addListener
 
                 onReady(
+                    val supportsAeAfLock = runCatching {
+                        val c2 = androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                        val aeModes = c2.getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES).orEmpty()
+                        val afModes = c2.getCameraCharacteristic(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES).orEmpty()
+                        aeModes.isNotEmpty() && afModes.isNotEmpty()
+                    }.getOrDefault(false)
+                    val supportsOis = runCatching {
+                        val modes = androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                            .getCameraCharacteristic(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
+                        modes?.contains(CameraCharacteristics.LENS_OPTICAL_STABILIZATION_MODE_ON) == true
+                    }.getOrDefault(false)
+                    val supportsEis = runCatching {
+                        val modes = androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                            .getCameraCharacteristic(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES)
+                        modes?.contains(CameraCharacteristics.CONTROL_VIDEO_STABILIZATION_MODE_ON) == true
+                    }.getOrDefault(false)
+                    val supportsFaceDetection = runCatching {
+                        val modes = androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                            .getCameraCharacteristic(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES)
+                        !modes.isNullOrEmpty()
+                    }.getOrDefault(false)
+
                     CameraCapabilities(
                         hasFlash = activeCamera.cameraInfo.hasFlashUnit(),
                         hasFrontCamera = runCatching {
