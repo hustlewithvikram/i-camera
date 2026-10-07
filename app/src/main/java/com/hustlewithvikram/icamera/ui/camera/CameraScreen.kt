@@ -203,6 +203,7 @@ fun CameraScreen() {
     var whiteBalance by remember { mutableIntStateOf(CameraMetadata.CONTROL_AWB_MODE_AUTO) }
     var manualFocus by remember { mutableStateOf(false) }
     var focusDistance by remember { mutableFloatStateOf(0f) }
+    var extensionStrength by remember { mutableIntStateOf(100) }
 
     val microphoneLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -519,6 +520,8 @@ fun CameraScreen() {
                 whiteBalance = whiteBalance,
                 manualFocus = manualFocus,
                 focusDistance = focusDistance,
+                extensionStrength = extensionStrength,
+                onExtensionStrengthChange = { extensionStrength = it; controller.setExtensionStrength(it) },
                 onIsoChange = { iso = it; controller.setManualExposure(it.toInt(), (shutter * 1_000_000_000L).toLong()) },
                 onShutterChange = { shutter = it; controller.setManualExposure(iso.toInt(), (it * 1_000_000_000L).toLong()) },
                 onExposureChange = { exposure = it; controller.setExposure(it) },
@@ -866,10 +869,14 @@ private fun ModeSpecificControls(
 ) {
     val videoMode = mode == CaptureMode.VIDEO || mode == CaptureMode.SLOW_MOTION || mode == CaptureMode.TIMELAPSE
     val fps = capabilities?.supportedVideoFps.orEmpty()
-    if (!videoMode && mode != CaptureMode.PRO) return
+    val extensionMode = mode == CaptureMode.PORTRAIT || mode == CaptureMode.NIGHT || mode == CaptureMode.HDR || mode == CaptureMode.RETOUCH || mode == CaptureMode.AUTO
+    if (!videoMode && mode != CaptureMode.PRO && !extensionMode) return
     Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (videoMode && fps.isNotEmpty()) {
             CompactModeRow(fps.map { it.toString() + " FPS" }, fps.indexOf(videoFps).coerceAtLeast(0)) { onVideoFpsChange(fps[it]) }
+        } else if (extensionMode) {
+            CompactModeRow(listOf("EFFECT", extensionStrength.toString()), 0) {}
+            Slider(value = extensionStrength.toFloat(), onValueChange = { onExtensionStrengthChange(it.roundToInt()) }, valueRange = 0f..100f)
         } else if (mode == CaptureMode.PRO) {
             val labels = listOf("ISO " + iso.toInt(), "S " + formatShutter(shutter), "EV " + formatEv(exposure), "WB " + whiteBalanceLabel(whiteBalance), if (manualFocus) "MF" else "AF")
             CompactModeRow(labels, proControl.ordinal) { onProControlChange(ProControl.entries[it]) }
