@@ -1088,10 +1088,9 @@ private fun ZoomPrecisionWheel(
                         verticalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
                         Canvas(
-                            modifier = Modifier.size(
-                                width = if (active) 2.dp else 1.dp,
-                                height = if (active) 15.dp else 8.dp
-                            )
+                            modifier = Modifier
+                                .width(if (active) 2.dp else 1.dp)
+                                .height(if (active) 15.dp else 8.dp)
                         ) {
                             drawRoundRect(
                                 color = if (active) {
