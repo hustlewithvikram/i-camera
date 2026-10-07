@@ -33,7 +33,6 @@ import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
-import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -93,7 +92,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
@@ -927,13 +925,23 @@ private fun ZoomControl(
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
 
                             try {
-                                drag(down.id) { change ->
-                                    val deltaPx = change.positionChange().x
+                                var lastX = longPress.position.x
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                        ?: event.changes.firstOrNull()
+                                    if (change == null) break
+
+                                    val deltaPx = change.position.x - lastX
+                                    lastX = change.position.x
+
                                     if (abs(deltaPx) > 0f) {
                                         change.consume()
                                         val zoomPerPixel = 1f / with(density) { 52.dp.toPx() }
                                         applyZoom(scrubZoom + deltaPx * zoomPerPixel)
                                     }
+
+                                    if (!change.pressed) break
                                 }
                             } finally {
                                 scrubbing = false
