@@ -865,7 +865,8 @@ private fun ModeSpecificControls(
     exposure: Int, whiteBalance: Int, manualFocus: Boolean, focusDistance: Float,
     onIsoChange: (Float) -> Unit, onShutterChange: (Float) -> Unit,
     onExposureChange: (Int) -> Unit, onWhiteBalanceChange: (Int) -> Unit,
-    onManualFocusChange: (Boolean) -> Unit, onFocusDistanceChange: (Float) -> Unit
+    onManualFocusChange: (Boolean) -> Unit, onFocusDistanceChange: (Float) -> Unit,
+    extensionStrength: Int, onExtensionStrengthChange: (Int) -> Unit
 ) {
     val videoMode = mode == CaptureMode.VIDEO || mode == CaptureMode.SLOW_MOTION || mode == CaptureMode.TIMELAPSE
     val fps = capabilities?.supportedVideoFps.orEmpty()
