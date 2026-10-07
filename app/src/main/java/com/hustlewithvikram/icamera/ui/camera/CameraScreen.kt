@@ -848,11 +848,17 @@ private fun ZoomControl(
     }
 
     // The precise wheel uses 0.1x detents, plus the exact hardware maximum.
-    val scrubStops = remember(scrubMax) {
+    val scrubMin = if (supportsUltraWide) {
+        ultraWideRatio.coerceIn(0.35f, 0.99f)
+    } else {
+        1f
+    }
+
+    val scrubStops = remember(scrubMin, scrubMax) {
         buildList {
-            var ratio = 1f
+            var ratio = (scrubMin * 10f).roundToInt() / 10f
             while (ratio < scrubMax - 0.051f) {
-                add((ratio * 10f).roundToInt() / 10f)
+                add(ratio)
                 ratio += 0.1f
             }
             add(scrubMax)
@@ -861,23 +867,23 @@ private fun ZoomControl(
 
     var scrubbing by remember { mutableStateOf(false) }
     var scrubZoom by remember {
-        mutableFloatStateOf(value.coerceIn(1f, scrubMax))
+        mutableFloatStateOf(value.coerceIn(scrubMin, scrubMax))
     }
 
     LaunchedEffect(value, scrubbing, scrubMax) {
         if (!scrubbing) {
-            scrubZoom = value.coerceIn(1f, scrubMax)
+            scrubZoom = value.coerceIn(scrubMin, scrubMax)
         }
     }
 
     fun applyZoom(next: Float) {
-        val clamped = next.coerceIn(1f, scrubMax)
+        val clamped = next.coerceIn(scrubMin, scrubMax)
         val snapped = if (abs(clamped - scrubMax) < 0.051f) {
             scrubMax
         } else {
             (clamped * 10f).roundToInt() / 10f
         }
-        scrubZoom = snapped.coerceIn(1f, scrubMax)
+        scrubZoom = snapped.coerceIn(scrubMin, scrubMax)
         onValueChange(scrubZoom)
     }
 
@@ -919,26 +925,41 @@ private fun ZoomControl(
                         } else {
                             scrubbing = true
                             val startingZoom = idleStops[presetIndex]
-                                .coerceIn(1f, scrubMax)
+                                .coerceIn(scrubMin, scrubMax)
+                            val startX = longPress.position.x
                             scrubZoom = startingZoom
                             applyZoom(startingZoom)
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
 
                             try {
-                                var lastX = longPress.position.x
                                 while (true) {
                                     val event = awaitPointerEvent()
                                     val change = event.changes.firstOrNull { it.id == down.id }
                                         ?: event.changes.firstOrNull()
                                     if (change == null) break
 
-                                    val deltaPx = change.position.x - lastX
-                                    lastX = change.position.x
+                                    // The finger position is mapped to the complete
+                                    // available zoom range from the exact press point.
+                                    // This removes the old fixed "1/52x per pixel"
+                                    // sensitivity, which could never reach the real
+                                    // maximum on a normal-width screen. It also makes
+                                    // every 0.1x detent equally predictable.
+                                    val x = change.position.x.coerceIn(0f, size.width.toFloat())
+                                    val next = if (x >= startX) {
+                                        val travel = (size.width - startX).coerceAtLeast(1f)
+                                        startingZoom +
+                                            ((x - startX) / travel) *
+                                            (scrubMax - startingZoom)
+                                    } else {
+                                        val travel = startX.coerceAtLeast(1f)
+                                        startingZoom -
+                                            ((startX - x) / travel) *
+                                            (startingZoom - scrubMin)
+                                    }
 
-                                    if (abs(deltaPx) > 0f) {
+                                    if (abs(x - startX) > 0f) {
                                         change.consume()
-                                        val zoomPerPixel = 1f / with(density) { 52.dp.toPx() }
-                                        applyZoom(scrubZoom + deltaPx * zoomPerPixel)
+                                        applyZoom(next)
                                     }
 
                                     if (!change.pressed) break
