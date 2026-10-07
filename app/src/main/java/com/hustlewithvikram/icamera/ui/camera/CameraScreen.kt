@@ -14,10 +14,12 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -163,8 +165,17 @@ fun CameraScreen() {
     }
 
     var mode by remember { mutableStateOf(CaptureMode.PHOTO) }
-    var previewScale by remember { mutableFloatStateOf(1f) }
-    var previewAlpha by remember { mutableFloatStateOf(1f) }
+    var previewSettled by remember { mutableStateOf(true) }
+    val previewScale by animateFloatAsState(
+        targetValue = if (previewSettled) 1f else 0.992f,
+        animationSpec = tween(durationMillis = 140),
+        label = "cameraPreviewScale"
+    )
+    val previewAlpha by animateFloatAsState(
+        targetValue = if (previewSettled) 1f else 0.96f,
+        animationSpec = tween(durationMillis = 120),
+        label = "cameraPreviewAlpha"
+    )
     var showSettings by remember { mutableStateOf(false) }
     var lowLightBoost by remember { mutableStateOf(false) }
     var torchStrength by remember { mutableFloatStateOf(1f) }
@@ -317,11 +328,10 @@ fun CameraScreen() {
     }
 
     LaunchedEffect(mode, frontCamera, ultraWide) {
-        previewScale = 0.965f
-        previewAlpha = 0.72f
-        kotlinx.coroutines.delay(45)
-        previewScale = 1f
-        previewAlpha = 1f
+        // Keep the existing camera UI intact while giving the preview a very short,
+        // low-amplitude settle instead of fading it out and waiting 45 ms before
+        // CameraX starts rebinding. Rapid mode taps cancel this effect automatically.
+        previewSettled = false
         if (isRecording) {
             controller.stopRecordingIfNeeded()
             isRecording = false
