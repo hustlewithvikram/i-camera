@@ -146,6 +146,8 @@ private enum class CaptureMode(
 
 private enum class ProControl { ISO, SHUTTER, EV, WB, FOCUS }
 
+private enum class QuickDialog { FLASH, TIMER, BURST, EXPOSURE, MODE_SETTINGS, MORE }
+
 private enum class FlashMode {
     AUTO,
     ON,
@@ -207,6 +209,7 @@ fun CameraScreen() {
     var photoTimerSeconds by remember { mutableIntStateOf(0) }
     var burstCount by remember { mutableIntStateOf(1) }
     var aeAfLocked by remember { mutableStateOf(false) }
+    var showQuickDialog by remember { mutableStateOf<QuickDialog?>(null) }
 
     val microphoneLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -439,58 +442,9 @@ fun CameraScreen() {
         ) {
             TopControls(
                 capabilities = capabilities,
-                flashMode = flashMode,
-                mode = mode,
-                showExposure = showExposure,
-                showGrid = showGrid,
-                onFlashClick = {
-                    flashMode = when (flashMode) {
-                        FlashMode.AUTO -> FlashMode.ON
-                        FlashMode.ON -> FlashMode.OFF
-                        FlashMode.OFF -> FlashMode.AUTO
-                    }
-
-                    if (mode.isVideoCaptureMode()) {
-                        controller.setTorch(flashMode == FlashMode.ON)
-                    } else {
-                        controller.imageCapture?.flashMode = flashMode.toImageFlashMode()
-                    }
-                },
-                onExposureClick = { showExposure = !showExposure },
-                onGridClick = { showGrid = !showGrid },
-                onSettingsClick = { showSettings = !showSettings }
+                showQuickControls = showSettings,
+                onToggleQuickControls = { showSettings = !showSettings }
             )
-
-            AnimatedVisibility(
-                visible = showSettings,
-                enter = fadeIn() + slideInVertically(initialOffsetY = { -it / 3 }),
-                exit = fadeOut() + slideOutVertically(targetOffsetY = { -it / 3 })
-            ) {
-                CameraSettingsPanel(
-                    capabilities = capabilities,
-                    lowLightBoost = lowLightBoost,
-                    onLowLightBoostChange = {
-                        lowLightBoost = it
-                        controller.setLowLightBoost(it)
-                    },
-                    torchStrength = torchStrength,
-                    onTorchStrengthChange = {
-                        torchStrength = it
-                        controller.setTorchStrength(it.toInt().coerceAtLeast(1))
-                    },
-                    proMode = mode == CaptureMode.PRO,
-                    iso = iso,
-                    onIsoChange = {
-                        iso = it
-                        controller.setManualExposure(iso.toInt(), (shutter * 1_000_000_000L).toLong())
-                    },
-                    shutter = shutter,
-                    onShutterChange = {
-                        shutter = it
-                        controller.setManualExposure(iso.toInt(), (shutter * 1_000_000_000L).toLong())
-                    }
-                )
-            }
 
             Spacer(Modifier.weight(1f))
 
@@ -699,6 +653,42 @@ fun CameraScreen() {
 
         }
 
+        Box(
+            modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 48.dp, end = 10.dp)
+        ) {
+            QuickControlsRail(
+                expanded = showSettings, mode = mode, capabilities = capabilities, flashMode = flashMode,
+                showGrid = showGrid, timerSeconds = photoTimerSeconds,
+                onToggleExpanded = { showSettings = !showSettings },
+                onOpenDialog = { showQuickDialog = it },
+                onToggleGrid = { showGrid = !showGrid }
+            )
+        }
+
+        CameraQuickDialog(
+            dialog = showQuickDialog, mode = mode, capabilities = capabilities, flashMode = flashMode,
+            onFlashChange = {
+                flashMode = it
+                if (mode.isVideoCaptureMode()) controller.setTorch(it == FlashMode.ON)
+                else controller.imageCapture?.flashMode = it.toImageFlashMode()
+            },
+            timerSeconds = photoTimerSeconds, onTimerChange = { photoTimerSeconds = it },
+            burstCount = burstCount, onBurstChange = { burstCount = it },
+            exposure = exposure, onExposureChange = { exposure = it; controller.setExposure(it) },
+            videoFps = videoFps, onVideoFpsChange = { videoFps = it },
+            proControl = proControl, onProControlChange = { proControl = it },
+            iso = iso, shutter = shutter, whiteBalance = whiteBalance, manualFocus = manualFocus, focusDistance = focusDistance,
+            onIsoChange = { iso = it; controller.setManualExposure(it.toInt(), (shutter * 1_000_000_000L).toLong()) },
+            onShutterChange = { shutter = it; controller.setManualExposure(iso.toInt(), (it * 1_000_000_000L).toLong()) },
+            onWhiteBalanceChange = { whiteBalance = it; controller.setWhiteBalance(it) },
+            onManualFocusChange = { enabled -> manualFocus = enabled; controller.setManualFocus(if (enabled) focusDistance else null) },
+            onFocusDistanceChange = { focusDistance = it; if (manualFocus) controller.setManualFocus(it) },
+            onAeAfLockChange = { locked -> aeAfLocked = locked; controller.setAeAfLock(locked) },
+            aeAfLocked = aeAfLocked, lowLightBoost = lowLightBoost,
+            onLowLightBoostChange = { lowLightBoost = it; controller.setLowLightBoost(it) },
+            onDismiss = { showQuickDialog = null }
+        )
+
         ModePickerSheet(
             visible = showModeSheet,
             selected = mode,
@@ -762,96 +752,53 @@ private fun FlashMode.toImageFlashMode(): Int = when (this) {
 }
 
 @Composable
-private fun TopControls(
-    capabilities: CameraCapabilities?,
-    flashMode: FlashMode,
-    mode: CaptureMode,
-    showExposure: Boolean,
-    showGrid: Boolean,
-    onFlashClick: () -> Unit,
-    onExposureClick: () -> Unit,
-    onGridClick: () -> Unit,
-    onSettingsClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
+private fun TopControls(capabilities: CameraCapabilities?, showQuickControls: Boolean, onToggleQuickControls: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         if (capabilities?.supportsUltraHdr == true) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = Color(0x55000000)
-            ) {
-                Text(
-                    "HDR",
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall
-                )
+            Surface(shape = RoundedCornerShape(14.dp), color = Color(0x55000000)) {
+                Text("HDR", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = Color.White, style = MaterialTheme.typography.labelSmall)
             }
-        } else {
-            Spacer(Modifier.size(1.dp))
+        } else Spacer(Modifier.size(1.dp))
+        Spacer(Modifier.size(44.dp))
+    }
+}
+
+@Composable
+private fun QuickControlsRail(
+    expanded: Boolean, mode: CaptureMode, capabilities: CameraCapabilities?, flashMode: FlashMode,
+    showGrid: Boolean, timerSeconds: Int, onToggleExpanded: () -> Unit,
+    onOpenDialog: (QuickDialog) -> Unit, onToggleGrid: () -> Unit
+) {
+    Column(
+        Modifier.clip(RoundedCornerShape(28.dp)).background(Color(0x770F0F0F)).padding(5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        CameraIconButton(onClick = onToggleExpanded, selected = expanded, size = 42.dp) {
+            Text(if (expanded) "⌃" else "⌄", color = Color.White, style = MaterialTheme.typography.titleMedium)
         }
-
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = Color(0x660F0F0F),
-            tonalElevation = 2.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 5.dp, vertical = 5.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (capabilities?.hasFlash == true) {
-                    CameraIconButton(
-                        onClick = onFlashClick,
-                        selected = flashMode != FlashMode.OFF,
-                        size = 40.dp
-                    ) {
-                        Icon(
-                            imageVector = when {
-                                mode.isVideoCaptureMode() && flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
-                                mode.isVideoCaptureMode() -> Icons.Rounded.FlashOff
-                                flashMode == FlashMode.AUTO -> Icons.Rounded.FlashAuto
-                                flashMode == FlashMode.ON -> Icons.Rounded.FlashOn
-                                else -> Icons.Rounded.FlashOff
-                            },
-                            contentDescription = "Flash",
-                            tint = Color.White
-                        )
-                    }
+        AnimatedVisibility(visible = expanded, enter = fadeIn() + slideInVertically(initialOffsetY = { -it / 3 }), exit = fadeOut() + slideOutVertically(targetOffsetY = { -it / 3 })) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (capabilities?.hasFlash == true) QuickRailButton("FLASH", flashMode != FlashMode.OFF) { onOpenDialog(QuickDialog.FLASH) }
+                QuickRailButton("GRID", showGrid) { onToggleGrid() }
+                if (capabilities?.exposureSupported == true) QuickRailButton("EV", false) { onOpenDialog(QuickDialog.EXPOSURE) }
+                if (mode == CaptureMode.PHOTO || mode == CaptureMode.PORTRAIT) {
+                    QuickRailButton("TIMER", timerSeconds != 0) { onOpenDialog(QuickDialog.TIMER) }
+                    QuickRailButton("BURST", false) { onOpenDialog(QuickDialog.BURST) }
+                    if (capabilities?.supportsAeAfLock == true) QuickRailButton("AE/AF", false) { onOpenDialog(QuickDialog.MORE) }
                 }
-
-                if (capabilities?.exposureSupported == true) {
-                    CameraIconButton(
-                        onClick = onExposureClick,
-                        selected = showExposure,
-                        size = 40.dp
-                    ) {
-                        Icon(Icons.Rounded.Exposure, contentDescription = "Exposure", tint = Color.White)
-                    }
-                }
-
-                CameraIconButton(
-                    onClick = onGridClick,
-                    selected = showGrid,
-                    size = 40.dp
-                ) {
-                    Icon(Icons.Rounded.Grid3x3, contentDescription = "Grid", tint = Color.White)
-                }
-
-                CameraIconButton(
-                    onClick = onSettingsClick,
-                    selected = false,
-                    size = 40.dp
-                ) {
-                    Text("•••", color = Color.White, style = MaterialTheme.typography.labelMedium)
-                }
+                if (mode.isVideoCaptureMode()) QuickRailButton("FPS", false) { onOpenDialog(QuickDialog.MODE_SETTINGS) }
+                if (mode == CaptureMode.PRO) QuickRailButton("PRO", false) { onOpenDialog(QuickDialog.MODE_SETTINGS) }
+                if (capabilities?.supportsLowLightBoost == true) QuickRailButton("MORE", false) { onOpenDialog(QuickDialog.MORE) }
             }
+        }
+    }
+}
+
+@Composable
+private fun QuickRailButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(Modifier.size(width = 52.dp, height = 38.dp).clip(RoundedCornerShape(19.dp)).clickable(onClick = onClick), RoundedCornerShape(19.dp), color = if (selected) Color(0xD9FFFFFF) else Color(0x66111111)) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(label, color = if (selected) Color.Black else Color.White, style = MaterialTheme.typography.labelSmall)
         }
     }
 }
@@ -1694,6 +1641,88 @@ private fun CameraModeRail(
                             MaterialTheme.typography.labelMedium
                         }
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CameraQuickDialog(
+    dialog: QuickDialog?, mode: CaptureMode, capabilities: CameraCapabilities?, flashMode: FlashMode,
+    onFlashChange: (FlashMode) -> Unit, timerSeconds: Int, onTimerChange: (Int) -> Unit,
+    burstCount: Int, onBurstChange: (Int) -> Unit, exposure: Int, onExposureChange: (Int) -> Unit,
+    videoFps: Int, onVideoFpsChange: (Int) -> Unit, proControl: ProControl, onProControlChange: (ProControl) -> Unit,
+    iso: Float, shutter: Float, whiteBalance: Int, manualFocus: Boolean, focusDistance: Float,
+    onIsoChange: (Float) -> Unit, onShutterChange: (Float) -> Unit, onWhiteBalanceChange: (Int) -> Unit,
+    onManualFocusChange: (Boolean) -> Unit, onFocusDistanceChange: (Float) -> Unit,
+    onAeAfLockChange: (Boolean) -> Unit, aeAfLocked: Boolean, lowLightBoost: Boolean,
+    onLowLightBoostChange: (Boolean) -> Unit, onDismiss: () -> Unit
+) {
+    AnimatedVisibility(visible = dialog != null, enter = fadeIn() + slideInVertically(initialOffsetY = { it / 5 }), exit = fadeOut() + slideOutVertically(targetOffsetY = { it / 5 }), modifier = Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().background(Color(0x66000000)).clickable(onClick = onDismiss), contentAlignment = Alignment.Center) {
+            Surface(Modifier.fillMaxWidth(0.86f).clip(RoundedCornerShape(26.dp)).clickable { }, RoundedCornerShape(26.dp), color = Color(0xE61A1A1A), shadowElevation = 18.dp) {
+                Column(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        when (dialog) {
+                            QuickDialog.FLASH -> "Flash"
+                            QuickDialog.TIMER -> "Timer"
+                            QuickDialog.BURST -> "Burst capture"
+                            QuickDialog.EXPOSURE -> "Exposure"
+                            QuickDialog.MODE_SETTINGS -> if (mode == CaptureMode.PRO) "Pro controls" else "Video frame rate"
+                            QuickDialog.MORE -> "Camera controls"
+                            null -> ""
+                        }, color = Color.White, style = MaterialTheme.typography.titleMedium
+                    )
+                    when (dialog) {
+                        QuickDialog.FLASH -> {
+                            val options = listOf(FlashMode.AUTO, FlashMode.ON, FlashMode.OFF)
+                            CompactModeRow(listOf("AUTO", "ON", "OFF"), options.indexOf(flashMode)) { onFlashChange(options[it]); onDismiss() }
+                        }
+                        QuickDialog.TIMER -> {
+                            val options = listOf(0, 3, 5, 10)
+                            CompactModeRow(listOf("OFF", "3s", "5s", "10s"), options.indexOf(timerSeconds).coerceAtLeast(0)) { onTimerChange(options[it]); onDismiss() }
+                        }
+                        QuickDialog.BURST -> {
+                            val options = listOf(1, 3, 5, 10)
+                            CompactModeRow(listOf("SINGLE", "3", "5", "10"), options.indexOf(burstCount).coerceAtLeast(0)) { onBurstChange(options[it]); onDismiss() }
+                        }
+                        QuickDialog.EXPOSURE -> ExposureControl(min = capabilities?.exposureMin ?: -6, max = capabilities?.exposureMax ?: 6, value = exposure, onValueChange = onExposureChange)
+                        QuickDialog.MODE_SETTINGS -> {
+                            if (mode.isVideoCaptureMode()) {
+                                val fps = capabilities?.supportedVideoFps.orEmpty()
+                                if (fps.isNotEmpty()) CompactModeRow(fps.map { "${it} FPS" }, fps.indexOf(videoFps).coerceAtLeast(0)) { onVideoFpsChange(fps[it]); onDismiss() }
+                            } else if (mode == CaptureMode.PRO) {
+                                val labels = listOf("ISO ${iso.toInt()}", "S ${formatShutter(shutter)}", "EV", "WB ${whiteBalanceLabel(whiteBalance)}", if (manualFocus) "MF" else "AF")
+                                CompactModeRow(labels, proControl.ordinal) { onProControlChange(ProControl.entries[it]) }
+                                when (proControl) {
+                                    ProControl.ISO -> Slider(value = iso, onValueChange = onIsoChange, valueRange = (capabilities?.isoMin ?: 100).toFloat()..(capabilities?.isoMax ?: 800).toFloat())
+                                    ProControl.SHUTTER -> Slider(value = shutter, onValueChange = onShutterChange, valueRange = (capabilities?.exposureTimeMinNs ?: 1_000_000L) / 1_000_000_000f..(capabilities?.exposureTimeMaxNs ?: 100_000_000L) / 1_000_000_000f)
+                                    ProControl.EV -> Slider(value = exposure.toFloat(), onValueChange = { onExposureChange(it.roundToInt()) }, valueRange = (capabilities?.exposureMin ?: -6).toFloat()..(capabilities?.exposureMax ?: 6).toFloat())
+                                    ProControl.WB -> {
+                                        val wb = listOf(CameraMetadata.CONTROL_AWB_MODE_AUTO, CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT, CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT, CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT, CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT)
+                                        CompactModeRow(wb.map(::whiteBalanceLabel), wb.indexOf(whiteBalance).coerceAtLeast(0)) { onWhiteBalanceChange(wb[it]) }
+                                    }
+                                    ProControl.FOCUS -> {
+                                        CameraIconButton(onClick = { onManualFocusChange(!manualFocus) }, selected = manualFocus, size = 42.dp) { Text(if (manualFocus) "MF" else "AF", color = Color.White, style = MaterialTheme.typography.labelMedium) }
+                                        if (manualFocus) Slider(value = focusDistance, onValueChange = onFocusDistanceChange, valueRange = 0f..(capabilities?.macroMinFocusDistance ?: 1f).coerceAtLeast(1f))
+                                    }
+                                }
+                            }
+                        }
+                        QuickDialog.MORE -> {
+                            if (capabilities?.supportsAeAfLock == true && (mode == CaptureMode.PHOTO || mode == CaptureMode.PORTRAIT)) {
+                                CameraIconButton(onClick = { onAeAfLockChange(!aeAfLocked) }, selected = aeAfLocked, size = 44.dp) { Text(if (aeAfLocked) "AE/AF LOCK" else "AE/AF", color = Color.White, style = MaterialTheme.typography.labelSmall) }
+                            }
+                            if (capabilities?.supportsLowLightBoost == true) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Low light boost", color = Color.White, modifier = Modifier.weight(1f))
+                                    CameraIconButton(onClick = { onLowLightBoostChange(!lowLightBoost) }, selected = lowLightBoost, size = 42.dp) { Text(if (lowLightBoost) "ON" else "OFF", color = Color.White, style = MaterialTheme.typography.labelSmall) }
+                                }
+                            }
+                        }
+                        null -> Unit
+                    }
                 }
             }
         }
