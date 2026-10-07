@@ -30,7 +30,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -798,59 +798,75 @@ private fun ZoomControl(
 ) {
     if (maxZoom <= 1.01f && !supportsUltraWide) return
 
-    val wholeMax = maxZoom.toInt().coerceAtLeast(1)
-    val normalStops = remember(maxZoom, hardwareZoomRatios, supportsUltraWide, ultraWideRatio, value) {
-        buildList {
-            if (supportsUltraWide) add(ultraWideRatio.coerceIn(0.35f, 0.98f))
-            add(1f)
-            addAll((2..minOf(5, wholeMax)).map { it.toFloat() })
-            addAll(hardwareZoomRatios.filter { it >= 1f && it <= maxZoom })
-            if (maxZoom > 5f) add(maxZoom)
-            if (value >= 1f && value <= maxZoom) add(value)
-        }
-            .map { (it * 10f).roundToInt() / 10f }
-            .distinct()
-            .sorted()
-    }
-
-    var scrubbing by remember { mutableStateOf(false) }
-    var scrubZoom by remember { mutableFloatStateOf(value.coerceIn(1f, maxZoom)) }
     val scrubMax = maxZoom.coerceAtLeast(1f)
-    val scrubSteps = remember(scrubMax) {
-        (1..scrubMax.toInt().coerceAtLeast(1)).map { it.toFloat() } +
-            listOf(scrubMax).filter { it % 1f != 0f }
-    }
 
     fun formatZoom(ratio: Float): String {
-        return if (ratio % 1f == 0f) {
+        return if (ratio >= scrubMax - 0.001f && scrubMax > 3f) {
+            "N"
+        } else if (ratio % 1f == 0f) {
             ratio.toInt().toString()
         } else {
             String.format(Locale.US, "%.1f", ratio)
         }
     }
 
+    // Idle: only the useful camera-style anchors.
+    val idleStops = remember(maxZoom, supportsUltraWide, ultraWideRatio) {
+        buildList {
+            if (supportsUltraWide) add(ultraWideRatio.coerceIn(0.35f, 0.98f))
+            add(1f)
+            if (scrubMax >= 2f) add(2f)
+            if (scrubMax >= 3f) add(3f)
+            if (scrubMax > 3.01f) add(scrubMax)
+        }.distinct().sorted()
+    }
+
+    // Dragging: expose the real zoom range in 0.1x increments.
+    val scrubStops = remember(scrubMax) {
+        buildList {
+            var ratio = 1f
+            while (ratio < scrubMax - 0.001f) {
+                add((ratio * 10f).roundToInt() / 10f)
+                ratio += 0.1f
+            }
+            add(scrubMax)
+        }.distinct()
+    }
+
+    var scrubbing by remember { mutableStateOf(false) }
+    var scrubZoom by remember { mutableFloatStateOf(value.coerceIn(1f, scrubMax)) }
+
+    LaunchedEffect(value, scrubbing, scrubMax) {
+        if (!scrubbing) {
+            scrubZoom = value.coerceIn(1f, scrubMax)
+        }
+    }
+
+    fun applyZoom(next: Float) {
+        val clamped = next.coerceIn(1f, scrubMax)
+        scrubZoom = clamped
+        onValueChange(clamped)
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 4.dp)
-            .pointerInput(maxZoom, supportsUltraWide, ultraWideRatio) {
-                detectDragGesturesAfterLongPress(
+            .pointerInput(scrubMax) {
+                detectDragGestures(
                     onDragStart = {
                         scrubbing = true
                         scrubZoom = value.coerceIn(1f, scrubMax)
                     },
                     onDrag = { change, dragAmount ->
                         change.consume()
-                        val next = (scrubZoom + dragAmount.x / 32f)
-                            .coerceIn(1f, scrubMax)
-                        scrubZoom = next
-                        onValueChange(next)
+                        // 32dp of horizontal movement changes zoom by 1.0x.
+                        applyZoom(scrubZoom + dragAmount.x / 32f)
                     },
                     onDragEnd = {
+                        // The expanded rail remains visible for the entire drag and
+                        // collapses only when the finger is lifted.
                         scrubbing = false
-                        val settled = (scrubZoom * 10f).roundToInt() / 10f
-                        scrubZoom = settled
-                        onValueChange(settled)
                     },
                     onDragCancel = {
                         scrubbing = false
@@ -859,66 +875,74 @@ private fun ZoomControl(
             },
         contentAlignment = Alignment.Center
     ) {
-        if (scrubbing) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                shape = RoundedCornerShape(24.dp),
-                color = Color(0xD9000000)
-            ) {
-                Column(
-                    modifier = Modifier.padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+        AnimatedContent(
+            targetState = scrubbing,
+            transitionSpec = {
+                fadeIn(animationSpec = androidx.compose.animation.core.tween(110)) togetherWith
+                    fadeOut(animationSpec = androidx.compose.animation.core.tween(80))
+            },
+            label = "zoomRailTransition"
+        ) { expanded ->
+            if (expanded) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color(0xD9000000)
                 ) {
-                    Text(
-                        text = formatZoom(scrubZoom) + "×",
-                        color = Color(0xFFFFD60A),
-                        style = MaterialTheme.typography.titleMedium
-                    )
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(18.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp)
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 20.dp,
+                            vertical = 8.dp
+                        )
                     ) {
-                        items(scrubSteps, key = { it.toString() }) { stop ->
-                            val active = abs(scrubZoom - stop) < 0.12f
+                        items(scrubStops, key = { it.toString() }) { stop ->
+                            val active = abs(scrubZoom - stop) < 0.06f
                             Text(
-                                text = formatZoom(stop),
-                                color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.72f),
-                                style = MaterialTheme.typography.labelLarge
+                                text = formatZoom(stop) + "x",
+                                color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.76f),
+                                style = if (active) {
+                                    MaterialTheme.typography.labelLarge
+                                } else {
+                                    MaterialTheme.typography.labelMedium
+                                }
                             )
                         }
                     }
                 }
-            }
-        } else {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 24.dp)
-            ) {
-                items(normalStops, key = { it.toString() }) { ratio ->
-                    val active = abs(value - ratio) < 0.08f
-                    Box(
-                        modifier = Modifier
-                            .size(if (active) 44.dp else 38.dp)
-                            .clip(CircleShape)
-                            .clickable { onValueChange(ratio) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (active) {
-                            Surface(
-                                modifier = Modifier.fillMaxSize(),
-                                shape = CircleShape,
-                                color = Color(0x995C5B45)
-                            ) {}
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 22.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    idleStops.forEach { ratio ->
+                        val active = abs(value - ratio) < 0.08f
+                        Box(
+                            modifier = Modifier
+                                .size(if (active) 44.dp else 38.dp)
+                                .clip(CircleShape)
+                                .clickable { applyZoom(ratio) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (active) {
+                                Surface(
+                                    modifier = Modifier.fillMaxSize(),
+                                    shape = CircleShape,
+                                    color = Color(0x995C5B45)
+                                ) {}
+                            }
+                            Text(
+                                text = formatZoom(ratio) + "x",
+                                color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.92f),
+                                style = MaterialTheme.typography.labelLarge
+                            )
                         }
-                        Text(
-                            text = formatZoom(ratio) + "×",
-                            color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.92f),
-                            style = MaterialTheme.typography.labelLarge
-                        )
                     }
                 }
             }
