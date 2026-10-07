@@ -906,19 +906,24 @@ private fun PhotoCaptureControls(
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         CompactModeRow(
-            labels = listOf("TIMER " + if (timerSeconds == 0) "OFF" else timerSeconds.toString() + "s", "BURST " + if (burstCount == 1) "OFF" else burstCount.toString()),
-            selected = 0,
-            onSelected = { if (it == 0) onTimerChange(timerOptions[(timerOptions.indexOf(timerSeconds) + 1) % timerOptions.size]) }
-        )
-        if (timerSeconds > 0) {
-            CompactModeRow(timerOptions.map { if (it == 0) "OFF" else it.toString() + "s" }, timerOptions.indexOf(timerSeconds).coerceAtLeast(0)) { onTimerChange(timerOptions[it]) }
-        }
-        if (burstCount > 1 || mode == CaptureMode.PHOTO) {
-            CompactModeRow(burstOptions.map { if (it == 1) "SINGLE" else "BURST $it" }, burstOptions.indexOf(burstCount).coerceAtLeast(0)) { onBurstChange(burstOptions[it]) }
-        }
+            timerOptions.map { if (it == 0) "TIMER OFF" else "TIMER ${it}s" },
+            timerOptions.indexOf(timerSeconds).coerceAtLeast(0)
+        ) { onTimerChange(timerOptions[it]) }
+        CompactModeRow(
+            burstOptions.map { if (it == 1) "SINGLE" else "BURST $it" },
+            burstOptions.indexOf(burstCount).coerceAtLeast(0)
+        ) { onBurstChange(burstOptions[it]) }
         if (capabilities?.supportsAeAfLock == true) {
-            CameraIconButton(onClick = { onAeAfLockChange(!aeAfLocked) }, selected = aeAfLocked, size = 38.dp) {
-                Text(if (aeAfLocked) "AE/AF LOCK" else "AE/AF", color = Color.White, style = MaterialTheme.typography.labelSmall)
+            CameraIconButton(
+                onClick = { onAeAfLockChange(!aeAfLocked) },
+                selected = aeAfLocked,
+                size = 38.dp
+            ) {
+                Text(
+                    if (aeAfLocked) "AE/AF LOCK" else "AE/AF",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
         }
     }
