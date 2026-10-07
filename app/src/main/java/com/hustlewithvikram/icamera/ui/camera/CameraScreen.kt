@@ -1,6 +1,7 @@
 package com.hustlewithvikram.icamera.ui.camera
 
 import android.Manifest
+import android.hardware.camera2.CameraMetadata
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
@@ -143,6 +144,8 @@ private enum class CaptureMode(
     DUAL("DUAL", null)
 }
 
+private enum class ProControl { ISO, SHUTTER, EV, WB, FOCUS }
+
 private enum class FlashMode {
     AUTO,
     ON,
@@ -195,6 +198,11 @@ fun CameraScreen() {
     var showGrid by remember { mutableStateOf(false) }
     var showModeSheet by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var videoFps by remember { mutableIntStateOf(30) }
+    var proControl by remember { mutableStateOf(ProControl.ISO) }
+    var whiteBalance by remember { mutableIntStateOf(CameraMetadata.CONTROL_AWB_MODE_AUTO) }
+    var manualFocus by remember { mutableStateOf(false) }
+    var focusDistance by remember { mutableFloatStateOf(0f) }
 
     val microphoneLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -261,9 +269,10 @@ fun CameraScreen() {
             previewView = previewView,
             lifecycleOwner = lifecycleOwner,
             selector = selector,
-            videoMode = mode == CaptureMode.VIDEO || mode == CaptureMode.DUAL,
+            videoMode = mode == CaptureMode.VIDEO || mode == CaptureMode.SLOW_MOTION || mode == CaptureMode.TIMELAPSE,
             photoMode = mode.photoMode ?: PhotoMode.PHOTO,
             capabilitySelector = mainSelector,
+            targetFps = if (mode.isVideoCaptureMode() && mode != CaptureMode.DUAL) videoFps else null,
             onReady = { caps ->
                 // Freeze the mode rail from the first successful capability scan for
                 // this physical camera. VIDEO must never replace the PHOTO capability
@@ -282,6 +291,9 @@ fun CameraScreen() {
                     mode = CaptureMode.PHOTO
                 }
 
+                if (caps.supportedVideoFps.isNotEmpty()) {
+                    videoFps = selectFpsForMode(mode, caps.supportedVideoFps, videoFps)
+                }
                 zoom = if (!frontCamera && ultraWide && caps.supportsUltraWide) {
                     caps.ultraWideZoomRatio
                 } else {
@@ -327,7 +339,7 @@ fun CameraScreen() {
         }
     }
 
-    LaunchedEffect(mode, frontCamera, ultraWide) {
+    LaunchedEffect(mode, frontCamera, ultraWide, if (mode.isVideoCaptureMode()) videoFps else 0) {
         // Keep the existing camera UI intact while giving the preview a very short,
         // low-amplitude settle instead of fading it out and waiting 45 ms before
         // CameraX starts rebinding. Rapid mode taps cancel this effect automatically.
@@ -662,6 +674,16 @@ fun CameraScreen() {
             }
         }
     }
+}
+
+private fun selectFpsForMode(mode: CaptureMode, supported: List<Int>, current: Int): Int {
+    if (supported.isEmpty()) return current
+    val preferred = when (mode) {
+        CaptureMode.SLOW_MOTION -> supported.filter { it >= 60 }.maxOrNull()
+        CaptureMode.TIMELAPSE -> supported.firstOrNull { it == 30 } ?: supported.firstOrNull { it == 24 }
+        else -> supported.firstOrNull { it == 30 } ?: supported.firstOrNull { it == 24 }
+    }
+    return if (current in supported && mode == CaptureMode.VIDEO) current else preferred ?: supported.maxOrNull() ?: current
 }
 
 private fun CaptureMode.videoTransform(): VideoTransform = when (this) {
