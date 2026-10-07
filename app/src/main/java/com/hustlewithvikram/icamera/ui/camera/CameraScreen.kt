@@ -204,6 +204,9 @@ fun CameraScreen() {
     var manualFocus by remember { mutableStateOf(false) }
     var focusDistance by remember { mutableFloatStateOf(0f) }
     var extensionStrength by remember { mutableIntStateOf(100) }
+    var photoTimerSeconds by remember { mutableIntStateOf(0) }
+    var burstCount by remember { mutableIntStateOf(1) }
+    var aeAfLocked by remember { mutableStateOf(false) }
 
     val microphoneLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -507,6 +510,22 @@ fun CameraScreen() {
                 )
             }
 
+            if (mode == CaptureMode.PHOTO || mode == CaptureMode.PORTRAIT) {
+                PhotoCaptureControls(
+                    mode = mode,
+                    capabilities = capabilities,
+                    timerSeconds = photoTimerSeconds,
+                    onTimerChange = { photoTimerSeconds = it },
+                    burstCount = burstCount,
+                    onBurstChange = { burstCount = it },
+                    aeAfLocked = aeAfLocked,
+                    onAeAfLockChange = { locked ->
+                        aeAfLocked = locked
+                        controller.setAeAfLock(locked)
+                    }
+                )
+            }
+
             ModeSpecificControls(
                 mode = mode,
                 capabilities = capabilities,
@@ -615,8 +634,20 @@ fun CameraScreen() {
                     } else if (mode != CaptureMode.DOCUMENT) {
                         controller.imageCapture?.let { image ->
                             image.flashMode = flashMode.toImageFlashMode()
-                            capture.capture(image) { uri ->
-                                if (uri != null) lastPhotoUri = uri
+                            val take = {
+                                if (burstCount > 1 && (mode == CaptureMode.PHOTO || mode == CaptureMode.PORTRAIT)) {
+                                    capture.captureBurst(image, burstCount) { uri -> if (uri != null) lastPhotoUri = uri }
+                                } else {
+                                    capture.capture(image) { uri -> if (uri != null) lastPhotoUri = uri }
+                                }
+                            }
+                            if (photoTimerSeconds > 0 && (mode == CaptureMode.PHOTO || mode == CaptureMode.PORTRAIT)) {
+                                kotlinx.coroutines.GlobalScope.launch(Dispatchers.Main.immediate) {
+                                    kotlinx.coroutines.delay(photoTimerSeconds * 1000L)
+                                    take()
+                                }
+                            } else {
+                                take()
                             }
                         }
                     }
@@ -857,6 +888,42 @@ private fun PhotoModeSelector(
         }
     }
 }
+@Composable
+private fun PhotoCaptureControls(
+    mode: CaptureMode,
+    capabilities: CameraCapabilities?,
+    timerSeconds: Int,
+    onTimerChange: (Int) -> Unit,
+    burstCount: Int,
+    onBurstChange: (Int) -> Unit,
+    aeAfLocked: Boolean,
+    onAeAfLockChange: (Boolean) -> Unit
+) {
+    val timerOptions = listOf(0, 3, 5, 10)
+    val burstOptions = listOf(1, 3, 5, 10)
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        CompactModeRow(
+            labels = listOf("TIMER " + if (timerSeconds == 0) "OFF" else timerSeconds.toString() + "s", "BURST " + if (burstCount == 1) "OFF" else burstCount.toString()),
+            selected = 0,
+            onSelected = { if (it == 0) onTimerChange(timerOptions[(timerOptions.indexOf(timerSeconds) + 1) % timerOptions.size]) }
+        )
+        if (timerSeconds > 0) {
+            CompactModeRow(timerOptions.map { if (it == 0) "OFF" else it.toString() + "s" }, timerOptions.indexOf(timerSeconds).coerceAtLeast(0)) { onTimerChange(timerOptions[it]) }
+        }
+        if (burstCount > 1 || mode == CaptureMode.PHOTO) {
+            CompactModeRow(burstOptions.map { if (it == 1) "SINGLE" else "BURST $it" }, burstOptions.indexOf(burstCount).coerceAtLeast(0)) { onBurstChange(burstOptions[it]) }
+        }
+        if (capabilities?.supportsAeAfLock == true) {
+            CameraIconButton(onClick = { onAeAfLockChange(!aeAfLocked) }, selected = aeAfLocked, size = 38.dp) {
+                Text(if (aeAfLocked) "AE/AF LOCK" else "AE/AF", color = Color.White, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
 @Composable
 private fun ModeSpecificControls(
     mode: CaptureMode, capabilities: CameraCapabilities?, videoFps: Int,
