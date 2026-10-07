@@ -506,6 +506,27 @@ fun CameraScreen() {
                 )
             }
 
+            ModeSpecificControls(
+                mode = mode,
+                capabilities = capabilities,
+                videoFps = videoFps,
+                onVideoFpsChange = { videoFps = it },
+                proControl = proControl,
+                onProControlChange = { proControl = it },
+                iso = iso,
+                shutter = shutter,
+                exposure = exposure,
+                whiteBalance = whiteBalance,
+                manualFocus = manualFocus,
+                focusDistance = focusDistance,
+                onIsoChange = { iso = it; controller.setManualExposure(it.toInt(), (shutter * 1_000_000_000L).toLong()) },
+                onShutterChange = { shutter = it; controller.setManualExposure(iso.toInt(), (it * 1_000_000_000L).toLong()) },
+                onExposureChange = { exposure = it; controller.setExposure(it) },
+                onWhiteBalanceChange = { whiteBalance = it; controller.setWhiteBalance(it) },
+                onManualFocusChange = { enabled -> manualFocus = enabled; controller.setManualFocus(if (enabled) focusDistance else null) },
+                onFocusDistanceChange = { focusDistance = it; if (manualFocus) controller.setManualFocus(it) }
+            )
+
             ZoomControl(
                 maxZoom = capabilities?.maxZoomRatio ?: 1f,
                 hardwareUltraWideRatios = capabilities?.hardwareUltraWideRatios ?: emptyList(),
@@ -832,6 +853,67 @@ private fun PhotoModeSelector(
             }
         }
     }
+}
+@Composable
+private fun ModeSpecificControls(
+    mode: CaptureMode, capabilities: CameraCapabilities?, videoFps: Int,
+    onVideoFpsChange: (Int) -> Unit, proControl: ProControl,
+    onProControlChange: (ProControl) -> Unit, iso: Float, shutter: Float,
+    exposure: Int, whiteBalance: Int, manualFocus: Boolean, focusDistance: Float,
+    onIsoChange: (Float) -> Unit, onShutterChange: (Float) -> Unit,
+    onExposureChange: (Int) -> Unit, onWhiteBalanceChange: (Int) -> Unit,
+    onManualFocusChange: (Boolean) -> Unit, onFocusDistanceChange: (Float) -> Unit
+) {
+    val videoMode = mode == CaptureMode.VIDEO || mode == CaptureMode.SLOW_MOTION || mode == CaptureMode.TIMELAPSE
+    val fps = capabilities?.supportedVideoFps.orEmpty()
+    if (!videoMode && mode != CaptureMode.PRO) return
+    Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (videoMode && fps.isNotEmpty()) {
+            CompactModeRow(fps.map { it.toString() + " FPS" }, fps.indexOf(videoFps).coerceAtLeast(0)) { onVideoFpsChange(fps[it]) }
+        } else if (mode == CaptureMode.PRO) {
+            val labels = listOf("ISO " + iso.toInt(), "S " + formatShutter(shutter), "EV " + formatEv(exposure), "WB " + whiteBalanceLabel(whiteBalance), if (manualFocus) "MF" else "AF")
+            CompactModeRow(labels, proControl.ordinal) { onProControlChange(ProControl.entries[it]) }
+            when (proControl) {
+                ProControl.ISO -> Slider(value = iso, onValueChange = onIsoChange, valueRange = (capabilities?.isoMin ?: 100).toFloat()..(capabilities?.isoMax ?: 800).toFloat())
+                ProControl.SHUTTER -> Slider(value = shutter, onValueChange = onShutterChange, valueRange = (capabilities?.exposureTimeMinNs ?: 1_000_000L) / 1_000_000_000f..(capabilities?.exposureTimeMaxNs ?: 100_000_000L) / 1_000_000_000f)
+                ProControl.EV -> Slider(value = exposure.toFloat(), onValueChange = { onExposureChange(it.roundToInt()) }, valueRange = (capabilities?.exposureMin ?: -6).toFloat()..(capabilities?.exposureMax ?: 6).toFloat())
+                ProControl.WB -> {
+                    val modes = listOf(CameraMetadata.CONTROL_AWB_MODE_AUTO, CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT, CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT, CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT, CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT)
+                    CompactModeRow(modes.map(::whiteBalanceLabel), modes.indexOf(whiteBalance).coerceAtLeast(0)) { onWhiteBalanceChange(modes[it]) }
+                }
+                ProControl.FOCUS -> {
+                    CameraIconButton(onClick = { onManualFocusChange(!manualFocus) }, selected = manualFocus, size = 38.dp) { Text(if (manualFocus) "MF" else "AF", color = Color.White, style = MaterialTheme.typography.labelMedium) }
+                    if (manualFocus) Slider(value = focusDistance, onValueChange = onFocusDistanceChange, valueRange = 0f..(capabilities?.macroMinFocusDistance ?: 1f).coerceAtLeast(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactModeRow(labels: List<String>, selected: Int, onSelected: (Int) -> Unit) {
+    LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(labels) { label ->
+            val index = labels.indexOf(label)
+            Surface(modifier = Modifier.clip(RoundedCornerShape(16.dp)).clickable { onSelected(index) }, shape = RoundedCornerShape(16.dp), color = if (index == selected) Color(0xD9FFFFFF) else Color(0x66111111)) {
+                Text(label, Modifier.padding(horizontal = 10.dp, vertical = 6.dp), color = if (index == selected) Color.Black else Color.White, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+}
+
+private fun formatEv(value: Int): String = if (value >= 0) "+" + value else value.toString()
+private fun formatShutter(seconds: Float): String = when {
+    seconds >= 1f -> seconds.roundToInt().toString() + "s"
+    seconds <= 0f -> "Auto"
+    else -> "1/" + (1f / seconds).roundToInt().coerceAtLeast(1)
+}
+private fun whiteBalanceLabel(mode: Int): String = when (mode) {
+    CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT -> "TUNG"
+    CameraMetadata.CONTROL_AWB_MODE_FLUORESCENT -> "FL"
+    CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT -> "DAY"
+    CameraMetadata.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT -> "CLOUDY"
+    else -> "AUTO"
 }
 private fun linearZoomFromRatio(
     ratio: Float,
