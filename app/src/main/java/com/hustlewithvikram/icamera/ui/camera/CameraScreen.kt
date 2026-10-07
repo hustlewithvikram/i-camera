@@ -871,11 +871,12 @@ private fun ModeSpecificControls(
     val videoMode = mode == CaptureMode.VIDEO || mode == CaptureMode.SLOW_MOTION || mode == CaptureMode.TIMELAPSE
     val fps = capabilities?.supportedVideoFps.orEmpty()
     val extensionMode = mode == CaptureMode.PORTRAIT || mode == CaptureMode.NIGHT || mode == CaptureMode.HDR || mode == CaptureMode.RETOUCH || mode == CaptureMode.AUTO
-    if (!videoMode && mode != CaptureMode.PRO && !extensionMode) return
+    val showExtensionStrength = extensionMode && capabilities?.supportsExtensionStrength == true
+    if (!videoMode && mode != CaptureMode.PRO && !showExtensionStrength) return
     Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (videoMode && fps.isNotEmpty()) {
             CompactModeRow(fps.map { it.toString() + " FPS" }, fps.indexOf(videoFps).coerceAtLeast(0)) { onVideoFpsChange(fps[it]) }
-        } else if (extensionMode) {
+        } else if (showExtensionStrength) {
             CompactModeRow(listOf("EFFECT", extensionStrength.toString()), 0) {}
             Slider(value = extensionStrength.toFloat(), onValueChange = { onExtensionStrengthChange(it.roundToInt()) }, valueRange = 0f..100f)
         } else if (mode == CaptureMode.PRO) {
