@@ -60,7 +60,8 @@ data class CameraCapabilities(
     val supportsDualPhotoVideo: Boolean = false,
     val hardwareZoomRatios: List<Float> = emptyList(),
     val hardwareUltraWideRatios: List<Float> = emptyList(),
-    val supportedVideoFps: List<Int> = emptyList()
+    val supportedVideoFps: List<Int> = emptyList(),
+    val supportsExtensionStrength: Boolean = false
 )
 
 enum class PhotoMode(val label: String, val extensionMode: Int?) {
@@ -367,7 +368,8 @@ class CameraController(private val context: Context) {
                         },
                         hardwareZoomRatios = hardwareZoomRatios,
                         hardwareUltraWideRatios = hardwareUltraWideRatios,
-                        supportedVideoFps = supportedVideoFps
+                        supportedVideoFps = supportedVideoFps,
+                        supportsExtensionStrength = extensionProvider.getCameraExtensionsInfo(activeCamera.cameraInfo).isExtensionStrengthAvailable()
                     )
                 )
             } catch (t: Throwable) {
