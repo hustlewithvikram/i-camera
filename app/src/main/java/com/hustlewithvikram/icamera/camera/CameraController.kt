@@ -75,6 +75,8 @@ enum class PhotoMode(val label: String, val extensionMode: Int?) {
 @androidx.camera.camera2.interop.ExperimentalCamera2Interop
 class CameraController(private val context: Context) {
     private var provider: ProcessCameraProvider? = null
+    private var bindGeneration = 0L
+    private var extensionsManager: ExtensionsManager? = null
 
     var camera: Camera? = null
         private set
@@ -106,11 +108,14 @@ class CameraController(private val context: Context) {
         onReady: (CameraCapabilities) -> Unit,
         onError: (Throwable) -> Unit
     ) {
+        val requestGeneration = ++bindGeneration
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
             try {
+                if (requestGeneration != bindGeneration) return@addListener
                 val cameraProvider = future.get()
                 provider = cameraProvider
+                if (requestGeneration != bindGeneration) return@addListener
                 cameraProvider.unbindAll()
 
                 val preview = Preview.Builder().build()
@@ -163,11 +168,14 @@ class CameraController(private val context: Context) {
                 }
 
                 val extensionConfig = if (!videoMode && photoMode.extensionMode != null) {
-                    val extensionsManager = ExtensionsManager.getInstanceAsync(context, cameraProvider).get()
-                    if (extensionsManager.isExtensionAvailable(selector, photoMode.extensionMode)) {
+                    val extensionProvider = extensionsManager
+                        ?: ExtensionsManager.getInstanceAsync(context, cameraProvider).get().also {
+                            extensionsManager = it
+                        }
+                    if (extensionProvider.isExtensionAvailable(selector, photoMode.extensionMode)) {
                         androidx.camera.extensions.ExtensionSessionConfig.Builder(
                             photoMode.extensionMode,
-                            extensionsManager
+                            extensionProvider
                         ).addUseCase(preview).addUseCase(image!!).build()
                     } else {
                         null
@@ -175,6 +183,8 @@ class CameraController(private val context: Context) {
                 } else {
                     null
                 }
+
+                if (requestGeneration != bindGeneration) return@addListener
 
                 camera = if (extensionConfig != null) {
                     cameraProvider.bindToLifecycle(lifecycleOwner, selector, extensionConfig)
@@ -222,10 +232,13 @@ class CameraController(private val context: Context) {
                     ImageCapture.getImageCaptureCapabilities(capabilityInfo).supportedOutputFormats
                 }.getOrDefault(setOf(ImageCapture.OUTPUT_FORMAT_JPEG))
 
-                val extensionsManager = ExtensionsManager.getInstanceAsync(context, cameraProvider).get()
+                val extensionProvider = extensionsManager
+                    ?: ExtensionsManager.getInstanceAsync(context, cameraProvider).get().also {
+                        extensionsManager = it
+                    }
                 listOf(PhotoMode.NIGHT, PhotoMode.HDR, PhotoMode.PORTRAIT, PhotoMode.RETOUCH, PhotoMode.AUTO).forEach { item ->
                     if (item.extensionMode != null && runCatching {
-                            extensionsManager.isExtensionAvailable(capabilitySelector, item.extensionMode)
+                            extensionProvider.isExtensionAvailable(capabilitySelector, item.extensionMode)
                         }.getOrDefault(false)) {
                         supportedPhotoModes += item
                     }
@@ -288,6 +301,8 @@ class CameraController(private val context: Context) {
                     .distinct()
                     .sorted()
                 if (photoMode == PhotoMode.MACRO) setMacro(true, activeMacroDistance) else setMacro(false, 0f)
+
+                if (requestGeneration != bindGeneration) return@addListener
 
                 onReady(
                     CameraCapabilities(
