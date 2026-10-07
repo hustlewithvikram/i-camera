@@ -110,6 +110,30 @@ class CameraCapture(private val context: Context) {
     }
 
 
+    fun captureBurst(
+        imageCapture: ImageCapture,
+        count: Int,
+        intervalMs: Long = 120L,
+        onResult: (Uri?) -> Unit
+    ) {
+        val total = count.coerceIn(2, 20)
+        fun next(index: Int, lastUri: Uri?) {
+            if (index >= total) {
+                onResult(lastUri)
+                return
+            }
+            capture(imageCapture) { uri ->
+                if (uri == null) {
+                    onResult(lastUri)
+                } else {
+                    if (index + 1 >= total) onResult(uri)
+                    else android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ next(index + 1, uri) }, intervalMs)
+                }
+            }
+        }
+        next(0, null)
+    }
+
     fun captureDualPhoto(
         primary: ImageCapture,
         secondary: ImageCapture,
