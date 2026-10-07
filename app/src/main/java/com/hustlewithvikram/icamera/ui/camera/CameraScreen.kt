@@ -23,6 +23,8 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -69,6 +71,14 @@ import androidx.compose.material.icons.rounded.FlashAuto
 import androidx.compose.material.icons.rounded.FlashOff
 import androidx.compose.material.icons.rounded.FlashOn
 import androidx.compose.material.icons.rounded.Grid3x3
+import androidx.compose.material.icons.rounded.NightsStay
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.CenterFocusStrong
+import androidx.compose.material.icons.rounded.BurstMode
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -464,45 +474,6 @@ fun CameraScreen() {
                 )
             }
 
-            if (mode == CaptureMode.PHOTO || mode == CaptureMode.PORTRAIT) {
-                PhotoCaptureControls(
-                    mode = mode,
-                    capabilities = capabilities,
-                    timerSeconds = photoTimerSeconds,
-                    onTimerChange = { photoTimerSeconds = it },
-                    burstCount = burstCount,
-                    onBurstChange = { burstCount = it },
-                    aeAfLocked = aeAfLocked,
-                    onAeAfLockChange = { locked ->
-                        aeAfLocked = locked
-                        controller.setAeAfLock(locked)
-                    }
-                )
-            }
-
-            ModeSpecificControls(
-                mode = mode,
-                capabilities = capabilities,
-                videoFps = videoFps,
-                onVideoFpsChange = { videoFps = it },
-                proControl = proControl,
-                onProControlChange = { proControl = it },
-                iso = iso,
-                shutter = shutter,
-                exposure = exposure,
-                whiteBalance = whiteBalance,
-                manualFocus = manualFocus,
-                focusDistance = focusDistance,
-                extensionStrength = extensionStrength,
-                onExtensionStrengthChange = { extensionStrength = it; controller.setExtensionStrength(it) },
-                onIsoChange = { iso = it; controller.setManualExposure(it.toInt(), (shutter * 1_000_000_000L).toLong()) },
-                onShutterChange = { shutter = it; controller.setManualExposure(iso.toInt(), (it * 1_000_000_000L).toLong()) },
-                onExposureChange = { exposure = it; controller.setExposure(it) },
-                onWhiteBalanceChange = { whiteBalance = it; controller.setWhiteBalance(it) },
-                onManualFocusChange = { enabled -> manualFocus = enabled; controller.setManualFocus(if (enabled) focusDistance else null) },
-                onFocusDistanceChange = { focusDistance = it; if (manualFocus) controller.setManualFocus(it) }
-            )
-
             ZoomControl(
                 maxZoom = capabilities?.maxZoomRatio ?: 1f,
                 hardwareUltraWideRatios = capabilities?.hardwareUltraWideRatios ?: emptyList(),
@@ -654,11 +625,12 @@ fun CameraScreen() {
         }
 
         Box(
-            modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 48.dp, end = 10.dp)
+            modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 6.dp, end = 10.dp)
         ) {
             QuickControlsRail(
                 expanded = showSettings, mode = mode, capabilities = capabilities, flashMode = flashMode,
                 showGrid = showGrid, timerSeconds = photoTimerSeconds,
+                burstCount = burstCount, aeAfLocked = aeAfLocked,
                 onToggleExpanded = { showSettings = !showSettings },
                 onOpenDialog = { showQuickDialog = it },
                 onToggleGrid = { showGrid = !showGrid }
@@ -766,40 +738,55 @@ private fun TopControls(capabilities: CameraCapabilities?, showQuickControls: Bo
 @Composable
 private fun QuickControlsRail(
     expanded: Boolean, mode: CaptureMode, capabilities: CameraCapabilities?, flashMode: FlashMode,
-    showGrid: Boolean, timerSeconds: Int, onToggleExpanded: () -> Unit,
-    onOpenDialog: (QuickDialog) -> Unit, onToggleGrid: () -> Unit
+    showGrid: Boolean, timerSeconds: Int, burstCount: Int, aeAfLocked: Boolean,
+    onToggleExpanded: () -> Unit, onOpenDialog: (QuickDialog) -> Unit, onToggleGrid: () -> Unit
 ) {
     Column(
-        Modifier.clip(RoundedCornerShape(28.dp)).background(Color(0x770F0F0F)).padding(5.dp),
+        Modifier.clip(RoundedCornerShape(30.dp)).background(Color(0x800F0F0F)).padding(5.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        CameraIconButton(onClick = onToggleExpanded, selected = expanded, size = 42.dp) {
-            Text(if (expanded) "⌃" else "⌄", color = Color.White, style = MaterialTheme.typography.titleMedium)
+        CameraIconButton(onClick = onToggleExpanded, selected = expanded, size = 44.dp) {
+            Icon(
+                imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                contentDescription = if (expanded) "Collapse camera controls" else "Expand camera controls",
+                tint = Color.White
+            )
         }
-        AnimatedVisibility(visible = expanded, enter = fadeIn() + slideInVertically(initialOffsetY = { -it / 3 }), exit = fadeOut() + slideOutVertically(targetOffsetY = { -it / 3 })) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (capabilities?.hasFlash == true) QuickRailButton("FLASH", flashMode != FlashMode.OFF) { onOpenDialog(QuickDialog.FLASH) }
-                QuickRailButton("GRID", showGrid) { onToggleGrid() }
-                if (capabilities?.exposureSupported == true) QuickRailButton("EV", false) { onOpenDialog(QuickDialog.EXPOSURE) }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(expandFrom = Alignment.Top, animationSpec = spring(dampingRatio = 0.82f, stiffness = 520f)) + fadeIn(animationSpec = tween(120)),
+            exit = shrinkVertically(shrinkTowards = Alignment.Top, animationSpec = tween(170)) + fadeOut(animationSpec = tween(90))
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                if (capabilities?.hasFlash == true) QuickRailIconButton(
+                    icon = when (flashMode) {
+                        FlashMode.AUTO -> Icons.Rounded.FlashAuto
+                        FlashMode.ON -> Icons.Rounded.FlashOn
+                        FlashMode.OFF -> Icons.Rounded.FlashOff
+                    }, contentDescription = "Flash", selected = flashMode != FlashMode.OFF
+                ) { onOpenDialog(QuickDialog.FLASH) }
+                QuickRailIconButton(Icons.Rounded.Grid3x3, "Grid", showGrid, onToggleGrid)
+                if (capabilities?.exposureSupported == true) QuickRailIconButton(Icons.Rounded.Exposure, "Exposure", onClick = { onOpenDialog(QuickDialog.EXPOSURE) })
                 if (mode == CaptureMode.PHOTO || mode == CaptureMode.PORTRAIT) {
-                    QuickRailButton("TIMER", timerSeconds != 0) { onOpenDialog(QuickDialog.TIMER) }
-                    QuickRailButton("BURST", false) { onOpenDialog(QuickDialog.BURST) }
-                    if (capabilities?.supportsAeAfLock == true) QuickRailButton("AE/AF", false) { onOpenDialog(QuickDialog.MORE) }
+                    QuickRailIconButton(Icons.Rounded.Timer, "Timer", timerSeconds != 0) { onOpenDialog(QuickDialog.TIMER) }
+                    QuickRailIconButton(Icons.Rounded.BurstMode, "Burst capture", burstCount > 1) { onOpenDialog(QuickDialog.BURST) }
+                    if (capabilities?.supportsAeAfLock == true) QuickRailIconButton(Icons.Rounded.CenterFocusStrong, "AE AF lock", aeAfLocked) { onOpenDialog(QuickDialog.MORE) }
                 }
-                if (mode.isVideoCaptureMode()) QuickRailButton("FPS", false) { onOpenDialog(QuickDialog.MODE_SETTINGS) }
-                if (mode == CaptureMode.PRO) QuickRailButton("PRO", false) { onOpenDialog(QuickDialog.MODE_SETTINGS) }
-                if (capabilities?.supportsLowLightBoost == true) QuickRailButton("MORE", false) { onOpenDialog(QuickDialog.MORE) }
+                if (mode.isVideoCaptureMode()) QuickRailIconButton(Icons.Rounded.Speed, "Video frame rate") { onOpenDialog(QuickDialog.MODE_SETTINGS) }
+                if (mode == CaptureMode.PRO) QuickRailIconButton(Icons.Rounded.Tune, "Pro controls") { onOpenDialog(QuickDialog.MODE_SETTINGS) }
+                if (capabilities?.supportsLowLightBoost == true) QuickRailIconButton(Icons.Rounded.NightsStay, "Low light controls") { onOpenDialog(QuickDialog.MORE) }
             }
         }
     }
 }
 
 @Composable
-private fun QuickRailButton(label: String, selected: Boolean, onClick: () -> Unit) {
-    Surface(Modifier.size(width = 52.dp, height = 38.dp).clip(RoundedCornerShape(19.dp)).clickable(onClick = onClick), RoundedCornerShape(19.dp), color = if (selected) Color(0xD9FFFFFF) else Color(0x66111111)) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(label, color = if (selected) Color.Black else Color.White, style = MaterialTheme.typography.labelSmall)
-        }
+private fun QuickRailIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector, contentDescription: String,
+    selected: Boolean = false, onClick: () -> Unit
+) {
+    CameraIconButton(onClick = onClick, selected = selected, size = 44.dp) {
+        Icon(imageVector = icon, contentDescription = contentDescription, tint = Color.White)
     }
 }
 
