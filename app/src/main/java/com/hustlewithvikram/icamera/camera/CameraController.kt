@@ -368,11 +368,14 @@ class CameraController(private val context: Context) {
         onReady: () -> Unit,
         onError: (Throwable) -> Unit
     ) {
+        val requestGeneration = ++bindGeneration
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
             try {
+                if (requestGeneration != bindGeneration) return@addListener
                 val cameraProvider = future.get()
                 provider = cameraProvider
+                if (requestGeneration != bindGeneration) return@addListener
                 cameraProvider.unbindAll()
                 val pair = cameraProvider.availableConcurrentCameraInfos.firstOrNull { infos ->
                     infos.any { it.lensFacing == CameraSelector.LENS_FACING_BACK } &&
@@ -406,6 +409,7 @@ class CameraController(private val context: Context) {
                     ConcurrentCamera.SingleCameraConfig(backInfo.cameraSelector, backGroup, lifecycleOwner),
                     ConcurrentCamera.SingleCameraConfig(frontInfo.cameraSelector, frontGroup, lifecycleOwner)
                 )
+                if (requestGeneration != bindGeneration) return@addListener
                 val concurrent = cameraProvider.bindToLifecycle(configs)
                 if (concurrent.cameras.size != 2) throw IllegalStateException("Dual camera binding failed.")
                 camera = concurrent.cameras[0]
