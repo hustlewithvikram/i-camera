@@ -351,7 +351,7 @@ class CameraCapture(private val context: Context) {
                             transform != VideoTransform.NONE &&
                             uri != Uri.EMPTY
                         ) {
-                            transformVideo(uri, transform) {
+                            transformVideo(uri, transform, videoCapture.targetFrameRate.upper) {
                                 ContextCompat.getMainExecutor(context).execute(onFinished)
                             }
                         } else {
