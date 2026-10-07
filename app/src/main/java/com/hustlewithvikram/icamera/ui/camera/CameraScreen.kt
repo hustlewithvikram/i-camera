@@ -486,7 +486,6 @@ fun CameraScreen() {
 
             ZoomControl(
                 maxZoom = capabilities?.maxZoomRatio ?: 1f,
-                hardwareZoomRatios = capabilities?.hardwareZoomRatios ?: emptyList(),
                 hardwareUltraWideRatios = capabilities?.hardwareUltraWideRatios ?: emptyList(),
                 supportsUltraWide = capabilities?.supportsUltraWide == true && !frontCamera,
                 ultraWideRatio = capabilities?.ultraWideZoomRatio ?: 0.5f,
@@ -834,7 +833,6 @@ private fun zoomRatioFromLinearZoom(
 @Composable
 private fun ZoomControl(
     maxZoom: Float,
-    hardwareZoomRatios: List<Float>,
     hardwareUltraWideRatios: List<Float>,
     supportsUltraWide: Boolean,
     ultraWideRatio: Float,
@@ -883,12 +881,8 @@ private fun ZoomControl(
             if (scrubMax >= 2f) add(2f)
             if (scrubMax >= 3f) add(3f)
 
-            hardwareZoomRatios
-                .filter { it > 3f && it < scrubMax - 0.05f }
-                .sorted()
-                .forEach { add(it) }
-
-            // N is the real CameraX maximum, never a placeholder label.
+            // Keep the familiar 1x / 2x / 3x rail. The final stop is
+            // always the exact maximum reported by CameraX.
             if (scrubMax > 3.05f) add(scrubMax)
             else if (scrubMax > 1.05f && scrubMax < 3f) add(scrubMax)
         }
