@@ -51,8 +51,8 @@ kotlin {
 }
 
 dependencies {
-    // Keep the entire Compose stack on one tested BOM.
-    implementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    // Keep Compose libraries aligned as one tested set.
+    implementation(platform("androidx.compose:compose-bom:2025.09.01"))
 
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.core:core-ktx:1.18.0")
@@ -74,6 +74,5 @@ dependencies {
     implementation("androidx.camera:camera-video:$cameraxVersion")
     implementation("androidx.camera:camera-extensions:$cameraxVersion")
 
-    // ML Kit document scanner is currently stable at 16.0.0.
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
 }
