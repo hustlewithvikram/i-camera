@@ -642,10 +642,10 @@ fun CameraScreen() {
                                 }
                             }
                             if (photoTimerSeconds > 0 && (mode == CaptureMode.PHOTO || mode == CaptureMode.PORTRAIT)) {
-                                kotlinx.coroutines.GlobalScope.launch(Dispatchers.Main.immediate) {
-                                    kotlinx.coroutines.delay(photoTimerSeconds * 1000L)
-                                    take()
-                                }
+                                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
+                                    { take() },
+                                    photoTimerSeconds * 1000L
+                                )
                             } else {
                                 take()
                             }
