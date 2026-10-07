@@ -348,7 +348,13 @@ fun CameraScreen() {
                 .pointerInput(capabilities?.maxZoomRatio) {
                     detectTransformGestures { _, _, zoomChange, _ ->
                         val maxZoom = capabilities?.maxZoomRatio ?: 1f
-                        val minZoom = if (ultraWide) 0.5f else 1f
+                        val minZoom = if (ultraWide) {
+                            capabilities?.hardwareUltraWideRatios?.minOrNull()
+                                ?: capabilities?.ultraWideZoomRatio
+                                ?: 0.5f
+                        } else {
+                            1f
+                        }
                         if (maxZoom > 1f || ultraWide) {
                             val next = (zoom * zoomChange).coerceIn(minZoom, maxZoom)
                             zoom = next
@@ -481,6 +487,7 @@ fun CameraScreen() {
             ZoomControl(
                 maxZoom = capabilities?.maxZoomRatio ?: 1f,
                 hardwareZoomRatios = capabilities?.hardwareZoomRatios ?: emptyList(),
+                hardwareUltraWideRatios = capabilities?.hardwareUltraWideRatios ?: emptyList(),
                 supportsUltraWide = capabilities?.supportsUltraWide == true && !frontCamera,
                 ultraWideRatio = capabilities?.ultraWideZoomRatio ?: 0.5f,
                 value = zoom,
@@ -828,6 +835,7 @@ private fun zoomRatioFromLinearZoom(
 private fun ZoomControl(
     maxZoom: Float,
     hardwareZoomRatios: List<Float>,
+    hardwareUltraWideRatios: List<Float>,
     supportsUltraWide: Boolean,
     ultraWideRatio: Float,
     value: Float,
@@ -841,48 +849,60 @@ private fun ZoomControl(
 
     fun formatZoom(ratio: Float): String {
         val rounded = (ratio * 10f).roundToInt() / 10f
-        return if (abs(rounded - scrubMax) < 0.051f && scrubMax > 3f) {
-            "N"
-        } else if (abs(rounded - rounded.toInt()) < 0.001f) {
+        return if (abs(rounded - rounded.toInt()) < 0.001f) {
             rounded.toInt().toString()
         } else {
             String.format(Locale.US, "%.1f", rounded)
         }
     }
 
-    // iPhone-style idle chooser: show real lens / hardware zoom points, not
-    // arbitrary 2x/3x buttons. Ultra-wide is the only sub-1x choice.
+    // Idle chooser order is deliberately stable:
+    // detected sub-1x lenses -> 1x -> 2x -> 3x -> exact hardware max.
+    // No fake zoom-out or fake maximum is shown.
     val idleStops = remember(
         maxZoom,
         hardwareZoomRatios,
+        hardwareUltraWideRatios,
         supportsUltraWide,
         ultraWideRatio
     ) {
         buildList {
             if (supportsUltraWide) {
-                add(ultraWideRatio.coerceIn(0.35f, 0.98f))
+                hardwareUltraWideRatios
+                    .filter { it > 0.05f && it < 1f }
+                    .sorted()
+                    .forEach { add(it) }
+
+                if (isEmpty()) {
+                    add(ultraWideRatio.coerceIn(0.1f, 0.98f))
+                }
             }
 
             add(1f)
 
+            if (scrubMax >= 2f) add(2f)
+            if (scrubMax >= 3f) add(3f)
+
             hardwareZoomRatios
-                .filter { it >= 1f && it <= scrubMax + 0.01f }
+                .filter { it > 3f && it < scrubMax - 0.05f }
                 .sorted()
                 .forEach { add(it) }
 
-            // If the capability scan doesn't expose useful lens ratios, retain
-            // familiar camera presets as a fallback.
-            if (size == 1 && scrubMax >= 2f) add(2f)
-            if (size == 2 && scrubMax >= 3f) add(3f)
+            // N is the real CameraX maximum, never a placeholder label.
+            if (scrubMax > 3.05f) add(scrubMax)
+            else if (scrubMax > 1.05f && scrubMax < 3f) add(scrubMax)
         }
-            .filter { it <= scrubMax + 0.01f }
+            .filter { it >= 0.05f && it <= scrubMax + 0.01f }
             .distinctBy { (it * 20f).roundToInt() }
             .sorted()
     }
 
     // The precise wheel uses 0.1x detents, plus the exact hardware maximum.
     val scrubMin = if (supportsUltraWide) {
-        ultraWideRatio.coerceIn(0.35f, 0.99f)
+        hardwareUltraWideRatios
+            .minOrNull()
+            ?.coerceIn(0.1f, 0.99f)
+            ?: ultraWideRatio.coerceIn(0.1f, 0.99f)
     } else {
         1f
     }
