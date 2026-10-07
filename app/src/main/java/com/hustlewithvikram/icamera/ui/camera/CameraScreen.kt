@@ -492,7 +492,11 @@ fun CameraScreen() {
                     } else {
                         ultraWide = false
                         zoom = ratio.coerceIn(1f, capabilities?.maxZoomRatio ?: 1f)
-                        controller.setZoom(zoom)
+                        controller.setSmoothZoom(
+                            ratio = zoom,
+                            minZoomRatio = 1f,
+                            maxZoomRatio = capabilities?.maxZoomRatio ?: 1f
+                        )
                     }
                 }
             )
@@ -791,6 +795,35 @@ private fun PhotoModeSelector(
         }
     }
 }
+private fun linearZoomFromRatio(
+    ratio: Float,
+    minZoomRatio: Float,
+    maxZoomRatio: Float
+): Float {
+    if (maxZoomRatio <= minZoomRatio) return 0f
+    if (ratio <= minZoomRatio) return 0f
+    if (ratio >= maxZoomRatio) return 1f
+    val cropAtMin = 1f / minZoomRatio
+    val cropAtMax = 1f / maxZoomRatio
+    val cropAtRatio = 1f / ratio
+    return ((cropAtMin - cropAtRatio) / (cropAtMin - cropAtMax)).coerceIn(0f, 1f)
+}
+
+private fun zoomRatioFromLinearZoom(
+    linearZoom: Float,
+    minZoomRatio: Float,
+    maxZoomRatio: Float
+): Float {
+    if (maxZoomRatio <= minZoomRatio) return minZoomRatio
+    val progress = linearZoom.coerceIn(0f, 1f)
+    if (progress <= 0f) return minZoomRatio
+    if (progress >= 1f) return maxZoomRatio
+    val cropAtMin = 1f / minZoomRatio
+    val cropAtMax = 1f / maxZoomRatio
+    val crop = cropAtMin + (cropAtMax - cropAtMin) * progress
+    return (1f / crop).coerceIn(minZoomRatio, maxZoomRatio)
+}
+
 @Composable
 private fun ZoomControl(
     maxZoom: Float,
@@ -878,13 +911,8 @@ private fun ZoomControl(
 
     fun applyZoom(next: Float) {
         val clamped = next.coerceIn(scrubMin, scrubMax)
-        val snapped = if (abs(clamped - scrubMax) < 0.051f) {
-            scrubMax
-        } else {
-            (clamped * 10f).roundToInt() / 10f
-        }
-        scrubZoom = snapped.coerceIn(scrubMin, scrubMax)
-        onValueChange(scrubZoom)
+        scrubZoom = clamped
+        onValueChange(clamped)
     }
 
     BoxWithConstraints(
@@ -914,7 +942,7 @@ private fun ZoomControl(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val presetIndex = (
                             (down.position.x - presetStartPx) / presetSlotPx
-                        ).roundToInt().coerceIn(0, idleStops.lastIndex)
+                        ).toInt().coerceIn(0, idleStops.lastIndex)
 
                         val longPress = awaitLongPressOrCancellation(down.id)
 
@@ -945,21 +973,31 @@ private fun ZoomControl(
                                     // maximum on a normal-width screen. It also makes
                                     // every 0.1x detent equally predictable.
                                     val x = change.position.x.coerceIn(0f, size.width.toFloat())
-                                    val next = if (x >= startX) {
+                                    // Map the finger to CameraX's linear/FOV zoom space.
+                                    val startLinear = linearZoomFromRatio(
+                                        ratio = startingZoom,
+                                        minZoomRatio = scrubMin,
+                                        maxZoomRatio = scrubMax
+                                    )
+                                    val nextLinear = if (x >= startX) {
                                         val travel = (size.width - startX).coerceAtLeast(1f)
-                                        startingZoom +
-                                            ((x - startX) / travel) *
-                                            (scrubMax - startingZoom)
+                                        startLinear +
+                                            ((x - startX) / travel) * (1f - startLinear)
                                     } else {
                                         val travel = startX.coerceAtLeast(1f)
-                                        startingZoom -
-                                            ((startX - x) / travel) *
-                                            (startingZoom - scrubMin)
+                                        startLinear -
+                                            ((startX - x) / travel) * startLinear
                                     }
+                                    val next = zoomRatioFromLinearZoom(
+                                        linearZoom = nextLinear,
+                                        minZoomRatio = scrubMin,
+                                        maxZoomRatio = scrubMax
+                                    )
 
                                     if (abs(x - startX) > 0f) {
                                         change.consume()
-                                        applyZoom(next)
+                                        scrubZoom = next.coerceIn(scrubMin, scrubMax)
+                                        onValueChange(scrubZoom)
                                     }
 
                                     if (!change.pressed) break
