@@ -243,37 +243,42 @@ class CameraController(private val context: Context) {
                     supportedPhotoModes += PhotoMode.RAW
                 }
 
-                // Discover a real physical ultra-wide lens from CameraX's
-                // physical-camera metadata. CameraX defines intrinsicZoomRatio < 1.0
-                // as an ultra-wide camera, so this is hardware capability detection,
-                // not a fake digital zoom value.
-                var discoveredUltraWideSelector: CameraSelector? = null
-                var discoveredUltraWideRatio = 0.5f
-                runCatching {
-                    val physicalCandidate = capabilityInfo.physicalCameraInfos
+                // Discover the real back-camera lens set exposed by CameraX.
+                // CameraInfo intrinsicZoomRatio is defined relative to the default
+                // back camera: < 1.0 is ultra-wide, 1.0 is the main camera, and
+                // > 1.0 is telephoto. Use the actual CameraInfo selectors so a
+                // detected ultra-wide can be rebound instead of faking a digital
+                // sub-1x crop.
+                val backCameraInfos = runCatching {
+                    cameraProvider.availableCameraInfos
                         .filter { it.lensFacing == CameraSelector.LENS_FACING_BACK }
-                        .filter { it.intrinsicZoomRatio < 0.98f }
-                        .minByOrNull { it.intrinsicZoomRatio }
+                }.getOrDefault(emptyList())
 
-                    if (physicalCandidate != null) {
-                        discoveredUltraWideRatio = physicalCandidate.intrinsicZoomRatio
-                            .coerceIn(0.35f, 0.98f)
-                        discoveredUltraWideSelector = physicalCandidate.cameraSelector
+                val discoveredUltraWide = backCameraInfos
+                    .filter {
+                        val ratio = it.intrinsicZoomRatio
+                        ratio.isFinite() && ratio > 0.05f && ratio < 0.98f
                     }
-                }
+                    .minByOrNull { it.intrinsicZoomRatio }
+
+                val discoveredUltraWideSelector = discoveredUltraWide?.cameraSelector
+                val discoveredUltraWideRatio = discoveredUltraWide
+                    ?.intrinsicZoomRatio
+                    ?.coerceIn(0.1f, 0.98f)
+                    ?: 0.5f
 
                 ultraWideSelector = discoveredUltraWideSelector
                 ultraWideZoomRatio = discoveredUltraWideRatio
 
-                val hardwareZoomRatios = runCatching {
-                    capabilityInfo.physicalCameraInfos
-                        .filter { it.lensFacing == CameraSelector.LENS_FACING_BACK }
-                        .map { it.intrinsicZoomRatio }
-                        .filter { it.isFinite() && it > 1.01f }
-                        .map { (it * 10f).roundToInt() / 10f }
-                        .distinct()
-                        .sorted()
-                }.getOrDefault(emptyList())
+                // These are real optical/physical lens ratios. The UI will add the
+                // standard 2x/3x presets when the camera can reach them, and the
+                // CameraX max zoom remains the final exact Nx stop.
+                val hardwareZoomRatios = backCameraInfos
+                    .map { it.intrinsicZoomRatio }
+                    .filter { it.isFinite() && it > 1.01f }
+                    .map { (it * 10f).roundToInt() / 10f }
+                    .distinct()
+                    .sorted()
                 if (photoMode == PhotoMode.MACRO) setMacro(true, activeMacroDistance) else setMacro(false, 0f)
 
                 onReady(
