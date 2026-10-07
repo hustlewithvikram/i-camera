@@ -57,7 +57,8 @@ data class CameraCapabilities(
     val supportsSlowMotion: Boolean = false,
     val supportsTimelapse: Boolean = false,
     val supportsDualPhotoVideo: Boolean = false,
-    val hardwareZoomRatios: List<Float> = emptyList()
+    val hardwareZoomRatios: List<Float> = emptyList(),
+    val hardwareUltraWideRatios: List<Float> = emptyList()
 )
 
 enum class PhotoMode(val label: String, val extensionMode: Int?) {
@@ -279,6 +280,13 @@ class CameraController(private val context: Context) {
                     .map { (it * 10f).roundToInt() / 10f }
                     .distinct()
                     .sorted()
+
+                val hardwareUltraWideRatios = backCameraInfos
+                    .map { it.intrinsicZoomRatio }
+                    .filter { it.isFinite() && it > 0.05f && it < 0.98f }
+                    .map { (it * 10f).roundToInt() / 10f }
+                    .distinct()
+                    .sorted()
                 if (photoMode == PhotoMode.MACRO) setMacro(true, activeMacroDistance) else setMacro(false, 0f)
 
                 onReady(
@@ -328,7 +336,8 @@ class CameraController(private val context: Context) {
                             infos.any { it.lensFacing == CameraSelector.LENS_FACING_BACK } &&
                                 infos.any { it.lensFacing == CameraSelector.LENS_FACING_FRONT }
                         },
-                        hardwareZoomRatios = hardwareZoomRatios
+                        hardwareZoomRatios = hardwareZoomRatios,
+                        hardwareUltraWideRatios = hardwareUltraWideRatios
                     )
                 )
             } catch (t: Throwable) {
