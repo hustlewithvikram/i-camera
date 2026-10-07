@@ -859,7 +859,6 @@ private fun ZoomControl(
     // No fake zoom-out or fake maximum is shown.
     val idleStops = remember(
         maxZoom,
-        hardwareZoomRatios,
         hardwareUltraWideRatios,
         supportsUltraWide,
         ultraWideRatio
