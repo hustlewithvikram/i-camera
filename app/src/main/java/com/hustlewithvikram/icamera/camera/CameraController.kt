@@ -395,7 +395,28 @@ class CameraController(private val context: Context) {
                         hardwareZoomRatios = hardwareZoomRatios,
                         hardwareUltraWideRatios = hardwareUltraWideRatios,
                         supportedVideoFps = supportedVideoFps,
-                        supportsExtensionStrength = extensionProvider.getCameraExtensionsInfo(activeCamera.cameraInfo).isExtensionStrengthAvailable()
+                        supportsExtensionStrength = extensionProvider.getCameraExtensionsInfo(activeCamera.cameraInfo).isExtensionStrengthAvailable(),
+                        supportsAeAfLock = runCatching {
+                            val c2 = androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                            val aeModes = c2.getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES).orEmpty()
+                            val afModes = c2.getCameraCharacteristic(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES).orEmpty()
+                            aeModes.isNotEmpty() && afModes.isNotEmpty()
+                        }.getOrDefault(false),
+                        supportsOpticalStabilization = runCatching {
+                            androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                                .getCameraCharacteristic(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
+                                ?.contains(CameraCharacteristics.LENS_OPTICAL_STABILIZATION_MODE_ON) == true
+                        }.getOrDefault(false),
+                        supportsElectronicStabilization = runCatching {
+                            androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                                .getCameraCharacteristic(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES)
+                                ?.contains(CameraCharacteristics.CONTROL_VIDEO_STABILIZATION_MODE_ON) == true
+                        }.getOrDefault(false),
+                        supportsFaceDetection = runCatching {
+                            !androidx.camera.camera2.interop.Camera2CameraInfo.from(activeCamera.cameraInfo)
+                                .getCameraCharacteristic(CameraCharacteristics.STATISTICS_INFO_AVAILABLE_FACE_DETECT_MODES)
+                                .isNullOrEmpty()
+                        }.getOrDefault(false)
                     )
                 )
             } catch (t: Throwable) {
