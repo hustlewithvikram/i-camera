@@ -1073,8 +1073,7 @@ private fun ZoomPrecisionWheel(
 
                 Box(
                     modifier = Modifier
-                        .width(itemWidth)
-                        .height(70.dp)
+                        .size(itemWidth, 70.dp)
                         .graphicsLayer {
                             scaleX = 0.78f + normalized * 0.22f
                             scaleY = 0.78f + normalized * 0.22f
@@ -1089,8 +1088,7 @@ private fun ZoomPrecisionWheel(
                     ) {
                         Canvas(
                             modifier = Modifier
-                                .width(if (active) 2.dp else 1.dp)
-                                .height(if (active) 15.dp else 8.dp)
+                                .size(if (active) 2.dp else 1.dp, if (active) 15.dp else 8.dp)
                         ) {
                             drawRoundRect(
                                 color = if (active) {
