@@ -470,6 +470,34 @@ class CameraController(private val context: Context) {
         camera?.cameraControl?.setZoomRatio(ratio)
     }
 
+    fun setSmoothZoom(
+        ratio: Float,
+        minZoomRatio: Float,
+        maxZoomRatio: Float
+    ) {
+        val cameraControl = camera?.cameraControl ?: return
+        if (maxZoomRatio <= minZoomRatio) return
+        val clampedRatio = ratio.coerceIn(minZoomRatio, maxZoomRatio)
+        if (clampedRatio <= minZoomRatio) {
+            cameraControl.setLinearZoom(0f)
+            return
+        }
+        if (clampedRatio >= maxZoomRatio) {
+            cameraControl.setLinearZoom(1f)
+            return
+        }
+
+        val cropAtMin = 1f / minZoomRatio
+        val cropAtMax = 1f / maxZoomRatio
+        val cropAtRatio = 1f / clampedRatio
+        val linearZoom = (
+            (cropAtMin - cropAtRatio) /
+                (cropAtMin - cropAtMax)
+            ).coerceIn(0f, 1f)
+
+        cameraControl.setLinearZoom(linearZoom)
+    }
+
     fun setExposure(index: Int) {
         camera?.cameraControl?.setExposureCompensationIndex(index)
     }
