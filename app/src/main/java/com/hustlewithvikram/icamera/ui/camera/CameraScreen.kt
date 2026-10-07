@@ -30,7 +30,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -90,6 +93,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -799,42 +804,66 @@ private fun ZoomControl(
     if (maxZoom <= 1.01f && !supportsUltraWide) return
 
     val scrubMax = maxZoom.coerceAtLeast(1f)
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
 
     fun formatZoom(ratio: Float): String {
-        return if (ratio >= scrubMax - 0.001f && scrubMax > 3f) {
+        val rounded = (ratio * 10f).roundToInt() / 10f
+        return if (abs(rounded - scrubMax) < 0.051f && scrubMax > 3f) {
             "N"
-        } else if (ratio % 1f == 0f) {
-            ratio.toInt().toString()
+        } else if (abs(rounded - rounded.toInt()) < 0.001f) {
+            rounded.toInt().toString()
         } else {
-            String.format(Locale.US, "%.1f", ratio)
+            String.format(Locale.US, "%.1f", rounded)
         }
     }
 
-    // Idle: only the useful camera-style anchors.
-    val idleStops = remember(maxZoom, supportsUltraWide, ultraWideRatio) {
+    // iPhone-style idle chooser: show real lens / hardware zoom points, not
+    // arbitrary 2x/3x buttons. Ultra-wide is the only sub-1x choice.
+    val idleStops = remember(
+        maxZoom,
+        hardwareZoomRatios,
+        supportsUltraWide,
+        ultraWideRatio
+    ) {
         buildList {
-            if (supportsUltraWide) add(ultraWideRatio.coerceIn(0.35f, 0.98f))
+            if (supportsUltraWide) {
+                add(ultraWideRatio.coerceIn(0.35f, 0.98f))
+            }
+
             add(1f)
-            if (scrubMax >= 2f) add(2f)
-            if (scrubMax >= 3f) add(3f)
-            if (scrubMax > 3.01f) add(scrubMax)
-        }.distinct().sorted()
+
+            hardwareZoomRatios
+                .filter { it >= 1f && it <= scrubMax + 0.01f }
+                .sorted()
+                .forEach { add(it) }
+
+            // If the capability scan doesn't expose useful lens ratios, retain
+            // familiar camera presets as a fallback.
+            if (size == 1 && scrubMax >= 2f) add(2f)
+            if (size == 2 && scrubMax >= 3f) add(3f)
+        }
+            .filter { it <= scrubMax + 0.01f }
+            .distinctBy { (it * 20f).roundToInt() }
+            .sorted()
     }
 
-    // Dragging: expose the real zoom range in 0.1x increments.
+    // The precise wheel uses 0.1x detents, plus the exact hardware maximum.
     val scrubStops = remember(scrubMax) {
         buildList {
             var ratio = 1f
-            while (ratio < scrubMax - 0.001f) {
+            while (ratio < scrubMax - 0.051f) {
                 add((ratio * 10f).roundToInt() / 10f)
                 ratio += 0.1f
             }
             add(scrubMax)
-        }.distinct()
+        }.distinctBy { (it * 10f).roundToInt() }
     }
 
     var scrubbing by remember { mutableStateOf(false) }
-    var scrubZoom by remember { mutableFloatStateOf(value.coerceIn(1f, scrubMax)) }
+    var scrubZoom by remember {
+        mutableFloatStateOf(value.coerceIn(1f, scrubMax))
+    }
 
     LaunchedEffect(value, scrubbing, scrubMax) {
         if (!scrubbing) {
@@ -844,109 +873,259 @@ private fun ZoomControl(
 
     fun applyZoom(next: Float) {
         val clamped = next.coerceIn(1f, scrubMax)
-        scrubZoom = clamped
-        onValueChange(clamped)
+        val snapped = if (abs(clamped - scrubMax) < 0.051f) {
+            scrubMax
+        } else {
+            (clamped * 10f).roundToInt() / 10f
+        }
+        scrubZoom = snapped.coerceIn(1f, scrubMax)
+        onValueChange(scrubZoom)
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 4.dp)
-            .pointerInput(scrubMax) {
-                detectDragGestures(
-                    onDragStart = {
-                        scrubbing = true
-                        scrubZoom = value.coerceIn(1f, scrubMax)
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        // 32dp of horizontal movement changes zoom by 1.0x.
-                        applyZoom(scrubZoom + dragAmount.x / 32f)
-                    },
-                    onDragEnd = {
-                        // The expanded rail remains visible for the entire drag and
-                        // collapses only when the finger is lifted.
-                        scrubbing = false
-                    },
-                    onDragCancel = {
-                        scrubbing = false
-                    }
-                )
-            },
+            .height(72.dp)
+            .padding(bottom = 2.dp),
         contentAlignment = Alignment.Center
     ) {
-        AnimatedContent(
-            targetState = scrubbing,
-            transitionSpec = {
-                fadeIn(animationSpec = androidx.compose.animation.core.tween(110)) togetherWith
-                    fadeOut(animationSpec = androidx.compose.animation.core.tween(80))
-            },
-            label = "zoomRailTransition"
-        ) { expanded ->
-            if (expanded) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color(0xD9000000)
-                ) {
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                            horizontal = 20.dp,
-                            vertical = 8.dp
-                        )
-                    ) {
-                        items(scrubStops, key = { it.toString() }) { stop ->
-                            val active = abs(scrubZoom - stop) < 0.06f
-                            Text(
-                                text = formatZoom(stop) + "x",
-                                color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.76f),
-                                style = if (active) {
-                                    MaterialTheme.typography.labelLarge
-                                } else {
-                                    MaterialTheme.typography.labelMedium
+        val presetSlot = 48.dp
+        val presetSlotPx = with(density) { presetSlot.toPx() }
+        val presetStartPx = with(density) {
+            ((maxWidth - (presetSlot * idleStops.size)) / 2f)
+                .coerceAtLeast(0.dp)
+                .toPx()
+        }
+
+        // One gesture recognizer owns the complete zoom chooser. This is
+        // intentional: a tap selects a preset; a long press transforms that
+        // exact preset into the iPhone-style precision wheel, and the same
+        // finger continues directly into the drag.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(idleStops, scrubMax) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val presetIndex = (
+                            (down.position.x - presetStartPx) / presetSlotPx
+                        ).roundToInt().coerceIn(0, idleStops.lastIndex)
+
+                        val longPress = awaitLongPressOrCancellation(down.id)
+
+                        if (longPress == null) {
+                            if (!scrubbing && presetIndex in idleStops.indices) {
+                                applyZoom(idleStops[presetIndex])
+                            }
+                        } else {
+                            scrubbing = true
+                            val startingZoom = idleStops[presetIndex]
+                                .coerceIn(1f, scrubMax)
+                            scrubZoom = startingZoom
+                            applyZoom(startingZoom)
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+
+                            try {
+                                drag(down.id) { change ->
+                                    val deltaPx = change.positionChange().x
+                                    if (abs(deltaPx) > 0f) {
+                                        change.consume()
+                                        val zoomPerPixel = 1f / with(density) { 52.dp.toPx() }
+                                        applyZoom(scrubZoom + deltaPx * zoomPerPixel)
+                                    }
                                 }
-                            )
+                            } finally {
+                                scrubbing = false
+                            }
                         }
                     }
                 }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 22.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    idleStops.forEach { ratio ->
-                        val active = abs(value - ratio) < 0.08f
-                        Box(
-                            modifier = Modifier
-                                .size(if (active) 44.dp else 38.dp)
-                                .clip(CircleShape)
-                                .clickable { applyZoom(ratio) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (active) {
-                                Surface(
-                                    modifier = Modifier.fillMaxSize(),
-                                    shape = CircleShape,
-                                    color = Color(0x995C5B45)
-                                ) {}
+        ) {
+            AnimatedContent(
+                targetState = scrubbing,
+                transitionSpec = {
+                    fadeIn(
+                        animationSpec = androidx.compose.animation.core.tween(130)
+                    ) togetherWith fadeOut(
+                        animationSpec = androidx.compose.animation.core.tween(90)
+                    )
+                },
+                label = "iphoneZoomChooser"
+            ) { expanded ->
+                if (!expanded) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        idleStops.forEach { ratio ->
+                            val active = abs(value - ratio) < 0.08f
+                            Box(
+                                modifier = Modifier
+                                    .size(presetSlot)
+                                    .clip(CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (active) {
+                                    Surface(
+                                        modifier = Modifier.size(42.dp),
+                                        shape = CircleShape,
+                                        color = Color(0x995C5B45)
+                                    ) {}
+                                }
+
+                                Text(
+                                    text = formatZoom(ratio) + "x",
+                                    color = if (active) {
+                                        Color(0xFFFFD60A)
+                                    } else {
+                                        Color.White.copy(alpha = 0.92f)
+                                    },
+                                    style = MaterialTheme.typography.labelLarge
+                                )
                             }
-                            Text(
-                                text = formatZoom(ratio) + "x",
-                                color = if (active) Color(0xFFFFD60A) else Color.White.copy(alpha = 0.92f),
-                                style = MaterialTheme.typography.labelLarge
+                        }
+                    }
+                } else {
+                    ZoomPrecisionWheel(
+                        scrubZoom = scrubZoom,
+                        scrubMax = scrubMax,
+                        stops = scrubStops,
+                        formatZoom = ::formatZoom
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZoomPrecisionWheel(
+    scrubZoom: Float,
+    scrubMax: Float,
+    stops: List<Float>,
+    formatZoom: (Float) -> String
+) {
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val itemWidth = 52.dp
+    val density = LocalDensity.current
+
+    val activeIndex = remember(scrubZoom, stops) {
+        stops.indices.minByOrNull { index ->
+            abs(stops[index] - scrubZoom)
+        } ?: 0
+    }
+
+    LaunchedEffect(activeIndex) {
+        if (stops.isNotEmpty()) {
+            listState.scrollToItem(activeIndex)
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(70.dp)
+    ) {
+        val sidePadding = (maxWidth / 2f - itemWidth / 2f).coerceAtLeast(0.dp)
+
+        LazyRow(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(70.dp),
+            userScrollEnabled = false,
+            horizontalArrangement = Arrangement.spacedBy(0.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                horizontal = sidePadding
+            )
+        ) {
+            items(stops.size, key = { index -> index }) { index ->
+                val stop = stops[index]
+                val distance by remember(index) {
+                    derivedStateOf {
+                        val info = listState.layoutInfo.visibleItemsInfo
+                            .firstOrNull { it.index == index }
+                        if (info == null) {
+                            99f
+                        } else {
+                            val center = (
+                                listState.layoutInfo.viewportStartOffset +
+                                    listState.layoutInfo.viewportEndOffset
+                            ) / 2f
+                            abs((info.offset + info.size / 2f) - center) /
+                                with(density) { itemWidth.toPx() }
+                        }
+                    }
+                }
+
+                val normalized = (1f - distance / 3f).coerceIn(0f, 1f)
+                val active = index == activeIndex
+
+                Box(
+                    modifier = Modifier
+                        .width(itemWidth)
+                        .height(70.dp)
+                        .graphicsLayer {
+                            scaleX = 0.78f + normalized * 0.22f
+                            scaleY = 0.78f + normalized * 0.22f
+                            alpha = 0.22f + normalized * 0.78f
+                            translationY = distance.coerceAtMost(3f) * 4f
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Canvas(
+                            modifier = Modifier.size(
+                                width = if (active) 2.dp else 1.dp,
+                                height = if (active) 15.dp else 8.dp
+                            )
+                        ) {
+                            drawRoundRect(
+                                color = if (active) {
+                                    Color(0xFFFFD60A)
+                                } else {
+                                    Color.White.copy(alpha = 0.55f)
+                                },
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                                    size.minDimension / 2f
+                                )
                             )
                         }
+
+                        Text(
+                            text = formatZoom(stop) + "x",
+                            color = if (active) {
+                                Color(0xFFFFD60A)
+                            } else {
+                                Color.White.copy(alpha = 0.74f)
+                            },
+                            style = if (active) {
+                                MaterialTheme.typography.labelLarge
+                            } else {
+                                MaterialTheme.typography.labelSmall
+                            },
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             }
         }
+
+        // Small center marker: the zoom value under the finger is the selected
+        // value, rather than a moving scrollbar thumb.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 2.dp)
+                .size(width = 22.dp, height = 2.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xFFFFD60A))
+        )
     }
 }
 
