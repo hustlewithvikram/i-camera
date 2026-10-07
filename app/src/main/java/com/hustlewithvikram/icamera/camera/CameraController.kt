@@ -4,6 +4,7 @@ import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CaptureRequest
 import android.os.Build
+import android.util.Range
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ConcurrentCamera
@@ -58,7 +59,8 @@ data class CameraCapabilities(
     val supportsTimelapse: Boolean = false,
     val supportsDualPhotoVideo: Boolean = false,
     val hardwareZoomRatios: List<Float> = emptyList(),
-    val hardwareUltraWideRatios: List<Float> = emptyList()
+    val hardwareUltraWideRatios: List<Float> = emptyList(),
+    val supportedVideoFps: List<Int> = emptyList()
 )
 
 enum class PhotoMode(val label: String, val extensionMode: Int?) {
@@ -105,6 +107,7 @@ class CameraController(private val context: Context) {
         videoMode: Boolean,
         photoMode: PhotoMode = PhotoMode.PHOTO,
         capabilitySelector: CameraSelector = selector,
+        targetFps: Int? = null,
         onReady: (CameraCapabilities) -> Unit,
         onError: (Throwable) -> Unit
     ) {
@@ -118,7 +121,9 @@ class CameraController(private val context: Context) {
                 if (requestGeneration != bindGeneration) return@addListener
                 cameraProvider.unbindAll()
 
-                val preview = Preview.Builder().build()
+                val previewBuilder = Preview.Builder()
+                targetFps?.let { fps -> previewBuilder.setTargetFrameRate(Range(fps, fps)) }
+                val preview = previewBuilder.build()
                 preview.setSurfaceProvider(previewView.surfaceProvider)
 
                 val useCases = mutableListOf<androidx.camera.core.UseCase>(preview)
@@ -154,7 +159,9 @@ class CameraController(private val context: Context) {
                         val recorder = Recorder.Builder()
                             .setQualitySelector(selectorQuality)
                             .build()
-                        VideoCapture.withOutput(recorder)
+                        val videoBuilder = VideoCapture.Builder(recorder)
+                        targetFps?.let { fps -> videoBuilder.setTargetFrameRate(Range(fps, fps)) }
+                        videoBuilder.build()
                     }
                 } else {
                     null
@@ -209,6 +216,13 @@ class CameraController(private val context: Context) {
                 }.getOrNull() ?: activeCamera.cameraInfo
 
                 val supportedPhotoModes = mutableSetOf(PhotoMode.PHOTO)
+                val supportedVideoFps = runCatching {
+                    capabilityInfo.getSupportedFrameRateRanges()
+                        .flatMap { range -> listOf(range.lower, range.upper) }
+                        .filter { it in 1..240 }
+                        .distinct()
+                        .sorted()
+                }.getOrDefault(emptyList())
                 val supportsVideoFromCapability = runCatching {
                     Recorder.getVideoCapabilities(capabilityInfo)
                         .getSupportedQualities(DynamicRange.SDR)
@@ -352,7 +366,8 @@ class CameraController(private val context: Context) {
                                 infos.any { it.lensFacing == CameraSelector.LENS_FACING_FRONT }
                         },
                         hardwareZoomRatios = hardwareZoomRatios,
-                        hardwareUltraWideRatios = hardwareUltraWideRatios
+                        hardwareUltraWideRatios = hardwareUltraWideRatios,
+                        supportedVideoFps = supportedVideoFps
                     )
                 )
             } catch (t: Throwable) {
@@ -557,6 +572,32 @@ class CameraController(private val context: Context) {
             options.clearCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE)
         }
         camera2Control.setCaptureRequestOptions(options.build())
+    }
+
+    @androidx.camera.camera2.interop.ExperimentalCamera2Interop
+    fun setWhiteBalance(mode: Int) {
+        val activeCamera = camera ?: return
+        val control = androidx.camera.camera2.interop.Camera2CameraControl.from(activeCamera.cameraControl)
+        val options = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
+        options.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, mode)
+        control.setCaptureRequestOptions(options.build())
+    }
+
+    fun setManualFocus(distance: Float?) {
+        val activeCamera = camera ?: return
+        val control = androidx.camera.camera2.interop.Camera2CameraControl.from(activeCamera.cameraControl)
+        val options = androidx.camera.camera2.interop.CaptureRequestOptions.Builder()
+        if (distance == null) {
+            options.setCaptureRequestOption(
+                CaptureRequest.CONTROL_AF_MODE,
+                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+            )
+            options.clearCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE)
+        } else {
+            options.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+            options.setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, distance.coerceAtLeast(0f))
+        }
+        control.setCaptureRequestOptions(options.build())
     }
 
     @androidx.camera.camera2.interop.ExperimentalCamera2Interop
