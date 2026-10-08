@@ -604,11 +604,12 @@ CameraModeRail(
                     documentReviewUri = null
                 },
                 onDone = {
-                    documentReviewUri?.let { uri ->
+                    val completedPage = documentReviewUri
+                    completedPage?.let { uri ->
                         documentPages = documentPages + uri
                     }
+                    lastPhotoUri = completedPage ?: documentPages.lastOrNull() ?: lastPhotoUri
                     documentReviewUri = null
-                    lastPhotoUri = documentReviewUri ?: documentPages.lastOrNull() ?: lastPhotoUri
                     documentPages = emptyList()
                     mode = CaptureMode.PHOTO
                 },
