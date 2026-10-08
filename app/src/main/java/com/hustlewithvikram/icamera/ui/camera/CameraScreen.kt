@@ -1783,7 +1783,7 @@ private fun ShutterButton(
 }
 
 @Composable
-private fun LatestThumbnail(uri: Uri?) {
+private fun LatestThumbnail(uri: Uri?, onClick: () -> Unit) {
     var bitmap by remember(uri) { mutableStateOf<Bitmap?>(null) }
     val context = LocalContext.current
 
@@ -1806,7 +1806,7 @@ private fun LatestThumbnail(uri: Uri?) {
     }
 
     Surface(
-        modifier = Modifier.size(52.dp),
+        modifier = Modifier\n            .size(52.dp)\n            .clickable(onClick = onClick),
         shape = CircleShape,
         color = Color(0x66111111)
     ) {
