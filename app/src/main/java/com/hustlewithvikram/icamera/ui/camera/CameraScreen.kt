@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.view.MotionEvent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -57,6 +58,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
@@ -79,6 +86,7 @@ import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -189,6 +197,8 @@ fun CameraScreen() {
     var isRecording by remember { mutableStateOf(false) }
     var focusPoint by remember { mutableStateOf<Pair<Float, Float>?>(null) }
     var lastPhotoUri by remember { mutableStateOf<Uri?>(null) }
+    var showPhotoViewer by remember { mutableStateOf(false) }
+    var galleryUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var showExposure by remember { mutableStateOf(false) }
     var showGrid by remember { mutableStateOf(false) }
     var showModeSheet by remember { mutableStateOf(false) }
@@ -312,6 +322,12 @@ fun CameraScreen() {
             isRecording = false
         }
         bindCamera()
+    }
+
+    LaunchedEffect(showPhotoViewer, lastPhotoUri) {
+        if (showPhotoViewer) {
+            galleryUris = loadRecentImageUris(context, lastPhotoUri)
+        }
     }
 
     LaunchedEffect(focusPoint) {
@@ -447,6 +463,10 @@ fun CameraScreen() {
                 hasFrontCamera = capabilities?.hasFrontCamera == true,
                 isRecording = isRecording,
                 lastPhotoUri = lastPhotoUri,
+                onOpenGallery = {
+                    galleryUris = loadRecentImageUris(context, lastPhotoUri)
+                    if (galleryUris.isNotEmpty()) showPhotoViewer = true
+                },
                 onModeChange = { nextMode ->
                     if (!isRecording && (nextMode != CaptureMode.DUAL || capabilities?.supportsConcurrentCamera == true)) {
                         mode = nextMode
@@ -683,6 +703,14 @@ CameraModeRail(
         )
 
 
+        }
+
+        if (showPhotoViewer) {
+            PhotoViewer(
+                images = galleryUris,
+                initialUri = lastPhotoUri,
+                onClose = { showPhotoViewer = false }
+            )
         }
 
         error?.let { message ->
@@ -1629,6 +1657,7 @@ private fun BottomControls(
     hasFrontCamera: Boolean,
     isRecording: Boolean,
     lastPhotoUri: Uri?,
+    onOpenGallery: () -> Unit,
     onModeChange: (CaptureMode) -> Unit,
     onCapture: () -> Unit,
     onLongCapture: () -> Unit,
@@ -1641,7 +1670,7 @@ private fun BottomControls(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        LatestThumbnail(lastPhotoUri)
+        LatestThumbnail(lastPhotoUri, onClick = onOpenGallery)
 
         ShutterButton(
             isRecording = isRecording,
@@ -1798,6 +1827,174 @@ private fun LatestThumbnail(uri: Uri?) {
                 )
             }
         }
+    }
+}
+
+
+private fun loadRecentImageUris(context: android.content.Context, preferred: Uri?): List<Uri> {
+    val result = ArrayList<Uri>()
+    val projection = arrayOf(MediaStore.Images.Media._ID, MediaStore.Images.Media.DATE_ADDED)
+    val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+    } else {
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+    }
+    context.contentResolver.query(
+        collection,
+        projection,
+        null,
+        null,
+        "\${MediaStore.Images.Media.DATE_ADDED} DESC"
+    )?.use { cursor ->
+        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+        while (cursor.moveToNext() && result.size < 100) {
+            result += Uri.withAppendedPath(collection, cursor.getLong(idColumn).toString())
+        }
+    }
+    if (preferred != null) {
+        result.remove(preferred)
+        result.add(0, preferred)
+    }
+    return result.distinct()
+}
+
+@Composable
+private fun PhotoViewer(
+    images: List<Uri>,
+    initialUri: Uri?,
+    onClose: () -> Unit
+) {
+    if (images.isEmpty()) {
+        LaunchedEffect(Unit) { onClose() }
+        return
+    }
+
+    val initialPage = maxOf(0, images.indexOf(initialUri))
+    val pagerState = rememberPagerState(initialPage = initialPage) { images.size }
+    val context = LocalContext.current
+
+    BackHandler(onBack = onClose)
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            beyondViewportPageCount = 1,
+            pageSpacing = 0.dp
+        ) { page ->
+            ZoomablePhoto(images[page], context)
+        }
+
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .align(Alignment.TopCenter)
+        ) {
+            Surface(
+                modifier = Modifier.size(46.dp).clip(CircleShape).clickable(onClick = onClose),
+                shape = CircleShape,
+                color = Color(0x66000000)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Rounded.Close, "Close photo viewer", tint = Color.White)
+                }
+            }
+            Surface(
+                modifier = Modifier.align(Alignment.Center),
+                shape = RoundedCornerShape(20.dp),
+                color = Color(0x66000000)
+            ) {
+                Text(
+                    "\${pagerState.currentPage + 1} / \${images.size}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
+                )
+            }
+        }
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = 18.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = Color(0x66000000)
+        ) {
+            Text(
+                if (images.size > 1) "Swipe left for older photos" else "Recent photo",
+                color = Color.White.copy(alpha = 0.82f),
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ZoomablePhoto(uri: Uri, context: android.content.Context) {
+    var bitmap by remember(uri) { mutableStateOf<Bitmap?>(null) }
+    var scale by remember(uri) { mutableFloatStateOf(1f) }
+    var offsetX by remember(uri) { mutableFloatStateOf(0f) }
+    var offsetY by remember(uri) { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(uri) {
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.loadThumbnail(uri, android.util.Size(1600, 1600), null)
+            }.getOrNull()
+        }
+        scale = 1f
+        offsetX = 0f
+        offsetY = 0f
+    }
+
+    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+        scale = (scale * zoomChange).coerceIn(1f, 4f)
+        if (scale > 1f) {
+            offsetX += panChange.x
+            offsetY += panChange.y
+        } else {
+            offsetX = 0f
+            offsetY = 0f
+        }
+    }
+
+    Box(
+        Modifier
+            .fillMaxSize()
+            .transformable(transformState)
+            .pointerInput(uri) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        if (scale > 1.05f) {
+                            scale = 1f
+                            offsetX = 0f
+                            offsetY = 0f
+                        } else {
+                            scale = 2f
+                        }
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        bitmap?.let {
+            Image(
+                bitmap = it.asImageBitmap(),
+                contentDescription = "Captured photo",
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offsetX
+                    translationY = offsetY
+                }
+            )
+        } ?: Box(
+            Modifier.size(34.dp).clip(CircleShape).background(Color.White.copy(alpha = .22f))
+        )
     }
 }
 
