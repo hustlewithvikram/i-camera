@@ -63,8 +63,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.gestures.snapping.SnapPosition
 import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
@@ -1918,7 +1916,7 @@ private fun PhotoViewer(
                 color = Color(0x66000000)
             ) {
                 Text(
-                    "\${pagerState.currentPage + 1} / \${images.size}",
+                    if (pagerState.currentPage == 0) "" else "${pagerState.currentPage} / ${images.size}",
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
@@ -1962,34 +1960,8 @@ private fun ZoomablePhoto(uri: Uri, context: android.content.Context) {
         offsetY = 0f
     }
 
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        scale = (scale * zoomChange).coerceIn(1f, 4f)
-        if (scale > 1f) {
-            offsetX += panChange.x
-            offsetY += panChange.y
-        } else {
-            offsetX = 0f
-            offsetY = 0f
-        }
-    }
-
     Box(
-        Modifier
-            .fillMaxSize()
-            .transformable(transformState)
-            .pointerInput(uri) {
-                detectTapGestures(
-                    onDoubleTap = {
-                        if (scale > 1.05f) {
-                            scale = 1f
-                            offsetX = 0f
-                            offsetY = 0f
-                        } else {
-                            scale = 2f
-                        }
-                    }
-                )
-            },
+        Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         bitmap?.let {
