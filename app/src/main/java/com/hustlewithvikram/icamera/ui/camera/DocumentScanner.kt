@@ -41,7 +41,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.background
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -251,7 +250,7 @@ private fun detectDocumentBounds(bitmap: Bitmap): android.graphics.Rect {
 }
 
 private fun luminance(color: Int): Int =
-    (0.2126f * android.graphics.Color.red(color) + 0.7152f * android.graphics.Color.green + 0.0722f * android.graphics.Color.blue(color)).toInt()
+    (0.2126f * android.graphics.Color.red(color) + 0.7152f * android.graphics.Color.green(color) + 0.0722f * android.graphics.Color.blue(color)).toInt()
 
 private fun enhanceDocument(bitmap: Bitmap): Bitmap {
     val output = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
