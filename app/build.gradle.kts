@@ -12,7 +12,8 @@ android {
         applicationId = "com.hustlewithvikram.icamera"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
+        // CI overrides this with a monotonically increasing commit-based build number.
+        versionCode = providers.gradleProperty("versionCode").orElse("4").get().toInt()
         versionName = "0.3.0"
     }
 
@@ -32,11 +33,21 @@ android {
         }
     }
 
+    signingConfigs {
+        create("stable") {
+            storeFile = rootProject.file("signing/icamera-debug.keystore")
+            storePassword = "icamera-debug-2026"
+            keyAlias = "icamera-debug"
+            keyPassword = "icamera-debug-2026"
+        }
+    }
+
     buildTypes {
         debug {
-            // CI uses the standard Android debug keystore.
+            signingConfig = signingConfigs.getByName("stable")
         }
         release {
+            signingConfig = signingConfigs.getByName("stable")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

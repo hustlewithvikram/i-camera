@@ -47,24 +47,17 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Install stable debug signing key
-        run: |
-          mkdir -p "$HOME/.android"
-          curl -fsSL "https://android.googlesource.com/platform/frameworks/support/+/bf0289331e88399e38f5486200199bc857932e24/development/keystore/debug.keystore?format=TEXT" |
-            tr -d '\n' |
-            base64 --decode > "$HOME/.android/debug.keystore"
-          chmod 600 "$HOME/.android/debug.keystore"
-          keytool -list -keystore "$HOME/.android/debug.keystore"             -storepass android -alias androiddebugkey -keypass android -v |
-            grep -E "Alias name:|SHA256:"
-
       - name: Verify toolchain
         run: |
           java -version
           ./gradlew --version
           sdkmanager --list_installed | grep -E "platforms;android-36|build-tools;35.0.0"
 
+      - name: Set monotonic version code
+        run: echo "VERSION_CODE=$(( $(git rev-list --count HEAD) + 1000 ))" >> "$GITHUB_ENV"
+
       - name: Build debug APK
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+        run: ./gradlew --no-daemon --stacktrace -PversionCode="$VERSION_CODE" assembleDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
