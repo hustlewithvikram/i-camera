@@ -1872,9 +1872,13 @@ private fun PhotoViewer(
         return
     }
 
-    val initialPage = maxOf(0, images.indexOf(initialUri)) + 1
+    val initialPage = images.indexOf(initialUri).coerceAtLeast(0) + 1
     val pagerState = rememberPagerState(initialPage = initialPage) { images.size + 1 }
     val context = LocalContext.current
+
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage == 0) onClose()
+    }
 
     BackHandler(onBack = onClose)
 
@@ -1886,7 +1890,6 @@ private fun PhotoViewer(
             pageSpacing = 0.dp
         ) { page ->
             if (page == 0) {
-                LaunchedEffect(Unit) { onClose() }
                 Box(Modifier.fillMaxSize().background(Color.Black))
             } else {
                 ZoomablePhoto(images[page - 1], context)
