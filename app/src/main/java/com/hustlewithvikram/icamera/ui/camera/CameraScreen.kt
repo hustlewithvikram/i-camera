@@ -608,7 +608,7 @@ CameraModeRail(
                         documentPages = documentPages + uri
                     }
                     documentReviewUri = null
-                    lastPhotoUri = documentPages.lastOrNull() ?: lastPhotoUri
+                    lastPhotoUri = documentReviewUri ?: documentPages.lastOrNull() ?: lastPhotoUri
                     documentPages = emptyList()
                     mode = CaptureMode.PHOTO
                 },
@@ -622,6 +622,7 @@ CameraModeRail(
             )
         }
 
+        if (mode != CaptureMode.DOCUMENT) {
         Box(
             modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.safeDrawing).padding(top = 6.dp, end = 10.dp)
         ) {
@@ -635,6 +636,10 @@ CameraModeRail(
             )
         }
 
+
+        }
+
+        if (mode != CaptureMode.DOCUMENT) {
         CameraQuickDialog(
             dialog = showQuickDialog, mode = mode, capabilities = capabilities, flashMode = flashMode,
             onFlashChange = {
@@ -659,6 +664,10 @@ CameraModeRail(
             onDismiss = { showQuickDialog = null }
         )
 
+
+        }
+
+        if (mode != CaptureMode.DOCUMENT) {
         ModePickerSheet(
             visible = showModeSheet,
             selected = mode,
@@ -671,6 +680,9 @@ CameraModeRail(
                 }
             }
         )
+
+
+        }
 
         error?.let { message ->
             Surface(
