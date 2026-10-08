@@ -120,12 +120,6 @@ import com.hustlewithvikram.icamera.camera.CameraController
 import com.hustlewithvikram.icamera.camera.PhotoMode
 import com.hustlewithvikram.icamera.camera.VideoTransform
 import com.hustlewithvikram.icamera.ui.components.SmoothModeRail
-import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
-import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
-import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
-import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
-import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_PDF
-import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER_MODE_FULL
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -209,6 +203,11 @@ fun CameraScreen() {
     var burstCount by remember { mutableIntStateOf(1) }
     var aeAfLocked by remember { mutableStateOf(false) }
     var showQuickDialog by remember { mutableStateOf<QuickDialog?>(null) }
+    var documentPages by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var documentReviewUri by remember { mutableStateOf<Uri?>(null) }
+    var documentProcessing by remember { mutableStateOf(false) }
+    var documentCaptureBusy by remember { mutableStateOf(false) }
+    val documentScope = rememberCoroutineScope()
 
     val microphoneLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -231,18 +230,6 @@ fun CameraScreen() {
                 )
             }
         }
-    }
-
-    val documentScannerLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            GmsDocumentScanningResult.fromActivityResultIntent(result.data)
-                ?.getPages()
-                ?.firstOrNull()
-                ?.let { lastPhotoUri = it.imageUri }
-        }
-        mode = CaptureMode.PHOTO
     }
 
     fun bindCamera() {
@@ -316,33 +303,6 @@ fun CameraScreen() {
                 error = "This camera configuration is not supported on this device."
             }
         )
-    }
-
-    LaunchedEffect(mode) {
-        if (mode == CaptureMode.DOCUMENT) {
-            val activity = context as? androidx.activity.ComponentActivity
-            if (activity == null) {
-                mode = CaptureMode.PHOTO
-            } else {
-                val options = GmsDocumentScannerOptions.Builder()
-                    .setGalleryImportAllowed(false)
-                    .setPageLimit(12)
-                    .setResultFormats(RESULT_FORMAT_JPEG, RESULT_FORMAT_PDF)
-                    .setScannerMode(SCANNER_MODE_FULL)
-                    .build()
-                val scanner = GmsDocumentScanning.getClient(options)
-                scanner.getStartScanIntent(activity)
-                    .addOnSuccessListener { intentSender ->
-                        documentScannerLauncher.launch(
-                            IntentSenderRequest.Builder(intentSender).build()
-                        )
-                    }
-                    .addOnFailureListener {
-                        error = "Document scanning is unavailable on this device."
-                        mode = CaptureMode.PHOTO
-                    }
-            }
-        }
     }
 
     LaunchedEffect(mode, frontCamera, ultraWide, if (mode.isVideoCaptureMode()) videoFps else 0) {
@@ -480,6 +440,7 @@ fun CameraScreen() {
 
             Spacer(Modifier.size(6.dp))
 
+            if (mode != CaptureMode.DOCUMENT) {
             BottomControls(
                 mode = mode,
                 canVideo = capabilities?.hasVideo == true,
@@ -590,8 +551,9 @@ fun CameraScreen() {
 
             val captureModes = stableCaptureModes
                 ?: availableCaptureModes(capabilities)
+                Spacer(Modifier.size(6.dp))
 
-            CameraModeRail(
+CameraModeRail(
                 selected = mode,
                 modes = captureModes,
                 onSelected = { next ->
@@ -601,8 +563,63 @@ fun CameraScreen() {
                     if (!isRecording) showModeSheet = true
                 }
             )
+            }        }
 
-
+        if (mode == CaptureMode.DOCUMENT) {
+            DocumentScannerControls(
+                pageCount = documentPages.size,
+                reviewUri = documentReviewUri,
+                processing = documentProcessing,
+                captureEnabled = !documentCaptureBusy && !documentProcessing,
+                onCapture = {
+                    controller.imageCapture?.let { image ->
+                        documentCaptureBusy = true
+                        image.flashMode = ImageCapture.FLASH_MODE_OFF
+                        capture.capture(image) { uri ->
+                            if (uri == null) {
+                                documentCaptureBusy = false
+                            } else {
+                                documentScope.launch {
+                                    documentProcessing = true
+                                    val processed = processDocumentPage(context, uri)
+                                    if (processed != null && processed != uri) {
+                                        context.contentResolver.delete(uri, null, null)
+                                    }
+                                    documentReviewUri = processed ?: uri
+                                    documentProcessing = false
+                                    documentCaptureBusy = false
+                                }
+                            }
+                        }
+                    }
+                },
+                onRetake = {
+                    documentReviewUri?.let { context.contentResolver.delete(it, null, null) }
+                    documentReviewUri = null
+                },
+                onAddPage = {
+                    documentReviewUri?.let { uri ->
+                        documentPages = documentPages + uri
+                    }
+                    documentReviewUri = null
+                },
+                onDone = {
+                    documentReviewUri?.let { uri ->
+                        documentPages = documentPages + uri
+                    }
+                    documentReviewUri = null
+                    lastPhotoUri = documentPages.lastOrNull() ?: lastPhotoUri
+                    documentPages = emptyList()
+                    mode = CaptureMode.PHOTO
+                },
+                onExit = {
+                    documentReviewUri?.let { context.contentResolver.delete(it, null, null) }
+                    documentPages.forEach { context.contentResolver.delete(it, null, null) }
+                    documentReviewUri = null
+                    documentPages = emptyList()
+                    mode = CaptureMode.PHOTO
+                }
+            )
         }
 
         Box(
