@@ -1869,8 +1869,8 @@ private fun PhotoViewer(
         return
     }
 
-    val initialPage = maxOf(0, images.indexOf(initialUri))
-    val pagerState = rememberPagerState(initialPage = initialPage) { images.size }
+    val initialPage = maxOf(0, images.indexOf(initialUri)) + 1
+    val pagerState = rememberPagerState(initialPage = initialPage) { images.size + 1 }
     val context = LocalContext.current
 
     BackHandler(onBack = onClose)
@@ -1882,7 +1882,12 @@ private fun PhotoViewer(
             beyondViewportPageCount = 1,
             pageSpacing = 0.dp
         ) { page ->
-            ZoomablePhoto(images[page], context)
+            if (page == 0) {
+                LaunchedEffect(Unit) { onClose() }
+                Box(Modifier.fillMaxSize().background(Color.Black))
+            } else {
+                ZoomablePhoto(images[page - 1], context)
+            }
         }
 
         Box(
@@ -1924,7 +1929,7 @@ private fun PhotoViewer(
             color = Color(0x66000000)
         ) {
             Text(
-                if (images.size > 1) "Swipe left for older photos" else "Recent photo",
+                if (images.size > 1) "Swipe left for older • right for newer" else "Recent photo",
                 color = Color.White.copy(alpha = 0.82f),
                 style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
