@@ -35,10 +35,11 @@ android {
 
     signingConfigs {
         create("stable") {
-            storeFile = rootProject.file("signing/icamera-debug.keystore")
-            storePassword = "icamera-debug-2026"
-            keyAlias = "icamera-debug"
-            keyPassword = "icamera-debug-2026"
+            // CI installs the standard Android debug keystore before building.
+            storeFile = rootProject.file(System.getProperty("user.home") + "/.android/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
