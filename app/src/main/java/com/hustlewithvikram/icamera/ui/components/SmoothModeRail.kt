@@ -41,6 +41,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -70,6 +71,7 @@ fun <T> SmoothModeRail(
     val latestSelected by rememberUpdatedState(selected)
     val latestOnSelected by rememberUpdatedState(onSelected)
     var programmaticSelection by remember { mutableStateOf(false) }
+    var centerJob by remember { mutableStateOf<Job?>(null) }
 
     fun centeredIndex(): Int? {
         val visible = listState.layoutInfo.visibleItemsInfo
@@ -102,7 +104,7 @@ fun <T> SmoothModeRail(
         if (abs(correction) > with(density) { 0.5.dp.toPx() }) {
             listState.animateScrollBy(
                 value = correction,
-                animationSpec = tween(170, easing = FastOutSlowInEasing)
+                animationSpec = tween(90, easing = FastOutSlowInEasing)
             )
         }
     }
@@ -112,11 +114,14 @@ fun <T> SmoothModeRail(
         if (index < 0 || programmaticSelection) return@LaunchedEffect
 
         if (centeredIndex() != index) {
-            programmaticSelection = true
-            try {
-                animateToCenter(index)
-            } finally {
-                programmaticSelection = false
+            centerJob?.cancel()
+            centerJob = scope.launch {
+                programmaticSelection = true
+                try {
+                    animateToCenter(index)
+                } finally {
+                    programmaticSelection = false
+                }
             }
         }
     }
@@ -156,14 +161,14 @@ fun <T> SmoothModeRail(
                     transitionSpec = {
                         spring(
                             dampingRatio = 0.92f,
-                            stiffness = Spring.StiffnessMediumLow
+                            stiffness = Spring.StiffnessMedium
                         )
                     },
                     label = "scale"
                 ) { if (it) 1f else 0.94f }
 
                 val alpha by transition.animateFloat(
-                    transitionSpec = { tween(150, easing = FastOutSlowInEasing) },
+                    transitionSpec = { tween(100, easing = FastOutSlowInEasing) },
                     label = "alpha"
                 ) { if (it) 1f else 0.62f }
 
@@ -201,9 +206,10 @@ fun <T> SmoothModeRail(
                             if (active) {
                                 onShowAllModes?.invoke()
                             } else {
-                                programmaticSelection = true
                                 onSelected(item)
-                                scope.launch {
+                                centerJob?.cancel()
+                                centerJob = scope.launch {
+                                    programmaticSelection = true
                                     try {
                                         animateToCenter(items.indexOf(item))
                                     } finally {
