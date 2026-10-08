@@ -87,5 +87,4 @@ dependencies {
     implementation("androidx.camera:camera-video:$cameraxVersion")
     implementation("androidx.camera:camera-extensions:$cameraxVersion")
 
-    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
 }
