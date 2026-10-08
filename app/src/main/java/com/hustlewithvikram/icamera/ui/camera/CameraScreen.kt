@@ -1806,7 +1806,9 @@ private fun LatestThumbnail(uri: Uri?, onClick: () -> Unit) {
     }
 
     Surface(
-        modifier = Modifier\n            .size(52.dp)\n            .clickable(onClick = onClick),
+        modifier = Modifier
+            .size(52.dp)
+            .clickable(onClick = onClick),
         shape = CircleShape,
         color = Color(0x66111111)
     ) {
