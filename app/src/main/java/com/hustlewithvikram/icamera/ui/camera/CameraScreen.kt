@@ -4,6 +4,7 @@ import android.Manifest
 import android.hardware.camera2.CameraMetadata
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -1950,7 +1951,7 @@ private fun ZoomablePhoto(uri: Uri, context: android.content.Context) {
     LaunchedEffect(uri) {
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
-                context.contentResolver.loadThumbnail(uri, android.util.Size(1600, 1600), null)
+                context.contentResolver.openInputStream(uri)?.use { input -> BitmapFactory.decodeStream(input) }
             }.getOrNull()
         }
         scale = 1f
