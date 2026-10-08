@@ -1847,7 +1847,7 @@ private fun loadRecentImageUris(context: android.content.Context, preferred: Uri
         projection,
         null,
         null,
-        "\${MediaStore.Images.Media.DATE_ADDED} DESC"
+        "${MediaStore.Images.Media.DATE_ADDED} DESC"
     )?.use { cursor ->
         val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
         while (cursor.moveToNext() && result.size < 100) {
