@@ -119,6 +119,7 @@ import com.hustlewithvikram.icamera.camera.CameraCapture
 import com.hustlewithvikram.icamera.camera.CameraController
 import com.hustlewithvikram.icamera.camera.PhotoMode
 import com.hustlewithvikram.icamera.camera.VideoTransform
+import com.hustlewithvikram.icamera.ui.components.SmoothModeRail
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
