@@ -20,7 +20,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
@@ -180,17 +179,6 @@ fun CameraScreen() {
     }
 
     var mode by remember { mutableStateOf(CaptureMode.PHOTO) }
-    var previewSettled by remember { mutableStateOf(true) }
-    val previewScale by animateFloatAsState(
-        targetValue = if (previewSettled) 1f else 0.992f,
-        animationSpec = tween(durationMillis = 140),
-        label = "cameraPreviewScale"
-    )
-    val previewAlpha by animateFloatAsState(
-        targetValue = if (previewSettled) 1f else 0.96f,
-        animationSpec = tween(durationMillis = 120),
-        label = "cameraPreviewAlpha"
-    )
     var showSettings by remember { mutableStateOf(false) }
     var lowLightBoost by remember { mutableStateOf(false) }
     var torchStrength by remember { mutableFloatStateOf(1f) }
@@ -357,10 +345,7 @@ fun CameraScreen() {
     }
 
     LaunchedEffect(mode, frontCamera, ultraWide, if (mode.isVideoCaptureMode()) videoFps else 0) {
-        // Keep the existing camera UI intact while giving the preview a very short,
-        // low-amplitude settle instead of fading it out and waiting 45 ms before
-        // CameraX starts rebinding. Rapid mode taps cancel this effect automatically.
-        previewSettled = false
+        // CameraX owns the preview surface. Avoid a second scale/fade animation during rebinding.
         if (isRecording) {
             controller.stopRecordingIfNeeded()
             isRecording = false
@@ -379,11 +364,6 @@ fun CameraScreen() {
         AndroidView(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = previewScale
-                    scaleY = previewScale
-                    alpha = previewAlpha
-                }
                 .pointerInput(capabilities?.maxZoomRatio) {
                     detectTransformGestures { _, _, zoomChange, _ ->
                         val maxZoom = capabilities?.maxZoomRatio ?: 1f
@@ -1404,234 +1384,14 @@ private fun CameraModeRail(
     onSelected: (CaptureMode) -> Unit,
     onShowAllModes: () -> Unit
 ) {
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
-    val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
-
-    // This flag is set before a programmatic selection changes the parent state.
-    // That prevents the settled-scroll observer from immediately selecting the
-    // mode that happened to be under the center while our own animation is running.
-    var programmaticScroll by remember { mutableStateOf(false) }
-    val latestSelected = rememberUpdatedState(selected)
-    val latestOnSelected = rememberUpdatedState(onSelected)
-
-    val flingBehavior = rememberSnapFlingBehavior(
-        lazyListState = listState,
-        snapPosition = SnapPosition.Center
+    SmoothModeRail(
+        items = modes,
+        selected = selected,
+        label = { it.label },
+        onSelected = onSelected,
+        onShowAllModes = onShowAllModes,
+        modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 8.dp)
     )
-
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 2.dp, bottom = 8.dp)
-    ) {
-        val itemWidth = 74.dp
-        val sidePadding = (maxWidth / 2f).coerceAtLeast(0.dp)
-
-        fun centeredIndex(): Int? {
-            val visible = listState.layoutInfo.visibleItemsInfo
-            if (visible.isEmpty()) return null
-
-            val viewportCenter = (
-                listState.layoutInfo.viewportStartOffset +
-                    listState.layoutInfo.viewportEndOffset
-                ) / 2f
-
-            return visible.minByOrNull { item ->
-                abs((item.offset + item.size / 2f) - viewportCenter)
-            }?.index
-        }
-
-        suspend fun centerMode(index: Int) {
-            if (index !in modes.indices) return
-
-            // First make the target item visible. Then measure its real position
-            // and animate by the exact delta required to put it at viewport center.
-            listState.animateScrollToItem(index)
-
-            val item = listState.layoutInfo.visibleItemsInfo
-                .firstOrNull { it.index == index }
-                ?: return
-
-            val viewportCenter = (
-                listState.layoutInfo.viewportStartOffset +
-                    listState.layoutInfo.viewportEndOffset
-                ) / 2f
-            val itemCenter = item.offset + item.size / 2f
-            val correction = itemCenter - viewportCenter
-
-            if (abs(correction) > 0.5f) {
-                listState.animateScrollBy(correction)
-            }
-        }
-
-        // Initial layout and capability changes must place the externally selected
-        // mode in the center. If the mode is already centered, do nothing.
-        LaunchedEffect(modes, selected) {
-            if (programmaticScroll) return@LaunchedEffect
-
-            val index = modes.indexOf(selected)
-            if (index < 0) return@LaunchedEffect
-
-            if (centeredIndex() != index) {
-                programmaticScroll = true
-                try {
-                    centerMode(index)
-                } finally {
-                    programmaticScroll = false
-                }
-            }
-        }
-
-        // A mode changes because of a horizontal user gesture only after the rail
-        // has completely settled. Never infer selection during an in-flight scroll.
-        LaunchedEffect(listState, modes) {
-            androidx.compose.runtime.snapshotFlow {
-                if (listState.isScrollInProgress) {
-                    null
-                } else {
-                    centeredIndex()
-                }
-            }.collect { index ->
-                if (
-                    index != null &&
-                    index in modes.indices &&
-                    !programmaticScroll &&
-                    modes[index] != latestSelected.value
-                ) {
-                    latestOnSelected.value(modes[index])
-                }
-            }
-        }
-
-        LazyRow(
-            state = listState,
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            flingBehavior = flingBehavior,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                horizontal = sidePadding
-            )
-        ) {
-            items(modes, key = { it.name }) { item ->
-                val itemIndex = modes.indexOf(item)
-                val active = item == selected
-                var verticalDrag by remember { mutableFloatStateOf(0f) }
-
-                val progress by remember(itemIndex, modes) {
-                    derivedStateOf {
-                        val info = listState.layoutInfo.visibleItemsInfo
-                            .firstOrNull { it.index == itemIndex }
-                        val viewportCenter = (
-                            listState.layoutInfo.viewportStartOffset +
-                                listState.layoutInfo.viewportEndOffset
-                            ) / 2f
-                        val itemCenter = info?.let {
-                            it.offset + it.size / 2f
-                        } ?: viewportCenter
-
-                        (
-                            1f - (
-                                abs(itemCenter - viewportCenter) /
-                                    with(density) { itemWidth.toPx() * 2.5f }
-                                )
-                            ).coerceIn(0f, 1f)
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .height(38.dp)
-                        .wrapContentWidth()
-                        .graphicsLayer {
-                            val p = if (active) 1f else progress
-                            scaleX = 0.84f + p * 0.16f
-                            scaleY = 0.84f + p * 0.16f
-                            alpha = 0.28f + p * 0.72f
-                        }
-                        // Only the active item listens for the upward mode-picker
-                        // gesture. Inactive items leave all horizontal touch handling
-                        // to LazyRow, so swiping the rail cannot be stolen by them.
-                        .then(
-                            if (active) {
-                                Modifier.pointerInput(item) {
-                                    detectVerticalDragGestures(
-                                        onVerticalDrag = { _, dragAmount ->
-                                            verticalDrag += dragAmount
-                                        },
-                                        onDragEnd = {
-                                            if (verticalDrag < -36f) {
-                                                onShowAllModes()
-                                            }
-                                            verticalDrag = 0f
-                                        },
-                                        onDragCancel = {
-                                            verticalDrag = 0f
-                                        }
-                                    )
-                                }
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .clip(RoundedCornerShape(19.dp))
-                        .then(
-                            if (active) {
-                                Modifier
-                                    .background(
-                                        Color(0x661F1F1F),
-                                        RoundedCornerShape(19.dp)
-                                    )
-                                    .border(
-                                        1.dp,
-                                        Color.White.copy(alpha = 0.08f),
-                                        RoundedCornerShape(19.dp)
-                                    )
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .clickable {
-                            if (active) {
-                                onShowAllModes()
-                            } else {
-                                // Mark this as programmatic BEFORE changing the parent
-                                // selection. This closes the race that caused taps to
-                                // jump back to the previous/under-center mode.
-                                programmaticScroll = true
-                                onSelected(item)
-
-                                scope.launch {
-                                    try {
-                                        centerMode(itemIndex)
-                                    } finally {
-                                        programmaticScroll = false
-                                    }
-                                }
-                            }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = item.label,
-                        maxLines = 1,
-                        softWrap = false,
-                        modifier = Modifier.padding(horizontal = 10.dp),
-                        color = if (active) {
-                            Color(0xFFFFD60A)
-                        } else {
-                            Color.White.copy(alpha = 0.78f)
-                        },
-                        style = if (active) {
-                            MaterialTheme.typography.labelLarge
-                        } else {
-                            MaterialTheme.typography.labelMedium
-                        }
-                    )
-                }
-            }
-        }
-    }
 }
 
 @Composable
